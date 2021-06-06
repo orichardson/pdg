@@ -12,7 +12,7 @@ from dist import RawJointDist, CPT
 from rv import Variable, binvar, Unit
 from pdg import PDG
 
-############""" Example Code """##############
+#%% ############""" Example Code """##############
 
 M = PDG()
 PS = binvar('PS')
@@ -35,7 +35,7 @@ CPT.det(PS, S, {'ps' : 's', '~ps' : 's'})
 assert(all(M.edgedata[('PS', 'S',0)]['cpd'] == M[S|PS]))
 
 
-############### Basic RawDist Tests ##############
+#%% ############# Basic RawDist Tests ##############
 
 unif = RawJointDist.unif([Unit, PS, S,SH,C])
 mu2 = RawJointDist.random(M.vars)
@@ -61,7 +61,8 @@ mu2[SH,S | PS]
 mu2[SH,S,PS | PS, Unit].shape
 
 # pd.Series(mu2[PS,S,SH])
-######################################################
+
+#%% #####################################################
 
 d = M.factor_product()
 
