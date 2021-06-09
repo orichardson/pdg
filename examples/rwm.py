@@ -32,15 +32,15 @@ len(H*X)
 CPT.det(H*X, Y, lambda hx: pm[np.array(hx[0]).dot(hx[1]) > 0])
 
 M += CPT.det(H*X, Y, lambda hx: pm[np.array(hx[0]).dot(hx[1]) > 0])
-# 
+#
 # M += CPT.from_ddict(Unit, PS, {'⋆': 0.3})
 # M += CPT.from_ddict(PS, S, { 'ps': 0.4, '~ps' : 0.2})
 # M += CPT.from_ddict(PS, SH, { 'ps': 0.8, '~ps' : 0.3})
-# M += CPT.from_ddict(S * SH, C, 
+# M += CPT.from_ddict(S * SH, C,
 #     { ('s','sh') : 0.6, ('s','~sh') : 0.4,
 #       ('~s','sh'): 0.1, ('~s','~sh'): 0.01} )
-# 
-# 
+#
+#
 # # Right now it's just a the BN distribution we expect
 # T = binvar("T")
 # M += T

@@ -20,8 +20,6 @@ S = binvar('S')
 SH = binvar('SH')
 C = binvar('C')
 
-M.graph.edges
-M.edgedata
 M += CPT.from_ddict(Unit, PS, {'⋆': 0.3})
 M += CPT.from_ddict(PS, S, { 'ps': 0.4, '~ps' : 0.2})
 M += CPT.from_ddict(PS, SH, { 'ps': 0.8, '~ps' : 0.3})
@@ -32,7 +30,7 @@ M += CPT.from_ddict(S & SH, C,
 CPT.det(PS, S, {'ps' : 's', '~ps' : 's'})
 
 
-assert(all(M.edgedata[('PS', 'S',0)]['cpd'] == M[S|PS]))
+#  assert(all(M.edgedata[('PS', 'S',0)]['cpd'] == M[S|PS]))
 
 
 #%% ############# Basic RawDist Tests ##############
@@ -55,7 +53,7 @@ mu3.H(V4)
 # mu3._query_mode = "dataframe"
 # mu3[A | Unit]
 
-mu2(("~ps", PS))
+# mu2(("~ps", PS))
 mu2[SH,S | PS]
 
 mu2[SH,S,PS | PS, Unit].shape

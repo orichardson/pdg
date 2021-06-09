@@ -1,0 +1,41 @@
+#canvas {
+	/* display: block;
+	width: 98vu;
+	height: 98vu; */
+	/* background-color: #A3A; */
+}
+.fullsize {
+	position: absolute;
+	top:0;
+	right:0;
+	width: 100%;
+	height: 100%;
+}
+.z1 {
+	z-index: 1;
+}
+.z2 {
+	z-index:2;
+}
+
+.node text {
+	text-anchor:middle;
+	dominant-baseline : middle;
+	fill : black;
+}
+.node .nodeshape {
+	fill : rgba(200,200,200, 0.3);
+	stroke-width: 1px;
+	stroke: #888;
+}
+
+.ghost {
+	pointer-events: none;
+}
+
+body,html {
+	margin: 0pt;
+	padding: 0pt;
+	width: 100%;
+	height: 100%;
+}

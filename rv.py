@@ -37,12 +37,21 @@ class Variable(set, metaclass=utils.CopiedType):
             kwargs['name'] = "×".join(kwargs['name']) if len(varis) else '1'
 
         joint = Variable(list(itertools.product(*(tuple(v.ordered) for v in varis))) , **kwargs)
-        joint.structure = [st for V in varis for st in V.structure] + [JointStructure(joint, *varis)]
-
+        # previously: wanted to keep all structure. Now, keep it heirarchically. If structure gets
+        #   changed
+        # joint.structure = [st for V in varis for st in V.structure] + [JointStructure(joint, *varis)]
+        joint.structure = [ JointStructure(joint, *varis) ]
         # joint.structure = [*self.structure, *other.structure, JointStructure(joint, self, other)]
         # joint =  Variable([(a,b) for a in self.ordered for b in other.ordered ], **kwargs)
 
         return joint
+
+    @property
+    def all_substructures(self):
+        for s in self.structure:
+            if isinstance(s,JointStructure):
+                for v in s.components:
+                    yield from v.all_substructures
 
     def __and__(self, other):
         return Variable.product(self,other)
@@ -86,6 +95,15 @@ class Variable(set, metaclass=utils.CopiedType):
                 for V in s.components:
                     if not (atomic and '×' in V.name):
                         yield V
+
+    def atomize(self):
+        js = [s for s in self.structure if isinstance(s,JointStructure)]
+        if len(js) == 0:
+            yield self
+        else:
+            for s in js:
+                for v in s.components:
+                    yield from v.atomize()
 
     @property
     def ordered(self):

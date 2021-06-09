@@ -379,7 +379,7 @@ class RawJointDist(Dist):
             collapsed = np.ma.divide(collapsed, collapsed.sum(axis=dim_nocond, keepdims=True))
 
         return collapsed
-
+    
 
     def H(self, *vars, base=2, given=None):
         """ Computes the entropy, or conditional
