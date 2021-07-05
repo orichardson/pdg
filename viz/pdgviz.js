@@ -21,9 +21,24 @@ $(function() {
 	context = canvas.getContext("2d");
 	lookup = []
 	nodes = N.map( function(varname) {
-		ob = {"id": varname, "w" : initw, "h": inith};
+		let ob = {"id": varname, "w" : initw, "h": inith, "display": true};
 		lookup[varname] = ob;
 		return ob;
+	});
+	fullN = [...N];
+	parentLinks = [];
+	ED.forEach(function(srctgt){
+		for(var multi of srctgt) {
+			s = multi.join(',')
+			if( !fullN.includes(s)) {
+				let ob = {"id": s, "w" : 0, "h": 0, "display": false};
+				nodes.push(ob);
+				fullN.push(s);
+				lookup[s] = ob;
+				multi.forEach(n =>
+					parentLinks.push({"source" : s, "target" : n}) );
+			}
+		}
 	});
 	// window.lookup = lookup
 	// hlinks = ED.map(
@@ -52,6 +67,10 @@ $(function() {
 									d3.mean(src.map(v => lookup[v].y)) ];
 			let avgtgt = [ d3.mean(tgt.map(v => lookup[v].x)),
 									d3.mean(tgt.map(v => lookup[v].y)) ];
+			srcnode = lookup[src.join(",")];
+			srcnode.fx = avgsrc[0]*1;
+			srcnode.fy = avgsrc[1]*1;
+
 			let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
 			// console.log('ho', avgsrc,avgtgt, mid);
 			const shortener = s =>
@@ -108,12 +127,18 @@ $(function() {
 		// 	context.moveTo(n.x, n.y);
 		// 	context.arc(n.x, n.y, 3, 0, 2 * Math.PI);
 		// });
+		fullN.forEach(function(nn) {
+			n = lookup[nn];
+			context.moveTo(n.x, n.y);
+			context.arc(n.x, n.y, 3, 0, 2 * Math.PI);
+			context.stroke();
+		});
 
 
 
 		// svg.selectAll(".node").data(nodes)#.call(
-		svg.selectAll(".node").data(nodes)
-			.attr("transform", n => "translate(" + n.x + ","+n.y +")");
+		svg.selectAll(".node").data(N)
+			.attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")");
 		 	// .attr("cx", n => n.x)
 			// .attr("cy", n => n.y);
 			// .select("circle")
@@ -123,18 +148,35 @@ $(function() {
 	}
 
 
-	// links =
+	links = ED.map(function([src,tgt],i) {
+		console.log(i);
+		return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
+	});
+
 	simulation = d3.forceSimulation(nodes)
-		.force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2))
-		.force("charge", d3.forceManyBody().strength(-30));
-		// .force("link", d3.forceLink(links).strength(1).distance(20).iterations(5))
+		// .force("center",
+		// 	d3.forceCenter(canvas.width / 2, canvas.height / 2))
+		.force("charge", d3.forceManyBody().strength(-50))
+		.force("link", d3.forceLink(links).id(n=>n.id)
+			.strength(1).distance(110).iterations(2))
+		.force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
+				.strength(0.2).distance(50).iterations(2))
+		.force("nointersect", d3.forceCollide().radius(n=>n.w/2)
+				.strength(0.5).iterations(5));
 	simulation.on("tick", ontick);
 
 		d3.select(canvas)
 		    .call(d3.drag()
 		        .container(canvas)
 		        .subject(function() {
-							return simulation.find(d3.event.x, d3.event.y, 35);
+							for(let n of N) {
+								let loon = lookup[n];
+								adx = Math.abs(loon.x - d3.event.x);
+								ady = Math.abs(loon.y - d3.event.y);
+
+								if(adx <  loon.w/2 && ady < loon.h/2)
+									return loon;
+							}
 						})
 		        .on("start", dragstarted)
 		        .on("drag", dragged)
@@ -159,6 +201,8 @@ $(function() {
 		  d3.event.subject.fy = null;
 		}
 });
+
+
 
 function vec2( obj ) {
 	return [obj.x, obj.y];
