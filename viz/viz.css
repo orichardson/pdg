@@ -4,6 +4,20 @@
 	height: 98vu; */
 	/* background-color: #A3A; */
 }
+
+.toolbar {
+	position: absolute;
+	bottom: 1em;
+	right:1em;
+	z-index:3;
+}
+
+
+.btn {
+	/* background-color: blue; */
+	/* padding:7px; */
+}
+
 .fullsize {
 	position: absolute;
 	top:0;

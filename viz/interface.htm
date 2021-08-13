@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+	<head>
+		<meta charset="utf-8">
+		<title>PDG Visualization</title>
+		
+		<!-- Bootstrap stylesheet  -->
+		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+		<link rel="stylesheet" href="viz.css">
+	</head>
+	<body>
+		<div class="toolbar">
+			<!-- <button class="btn btn-md btn-secondary" name="drag-mode-b">Drag</button>
+			<button class="btn btn-md btn-secondary" name="node-mode-b">Node Creation</button>
+			<input type="checkbox" class="btn btn-md btn-secondary" name="node-mode-b">Node Creation</button> -->
+			
+			<div class="btn-toolbar" role="toolbar" aria-label="Toolbar with button groups">
+				<div class="btn-group me-2" role="group" aria-label="First group">
+					<button type="button" class="btn btn-primary active">Drag Mode</button>
+					<button type="button" class="btn btn-primary">2</button>
+					<button type="button" class="btn btn-primary">3</button>
+					<button type="button" class="btn btn-primary">4</button>
+				</div>
+				<div class="btn-group me-2" role="group" aria-label="Second group">
+					<button type="button" class="btn btn-secondary">5</button>
+					<button type="button" class="btn btn-secondary">6</button>
+					<button type="button" class="btn btn-secondary">7</button>
+				</div>
+					<div class="btn-group" role="group" aria-label="Third group">
+					<button type="button" class="btn btn-info">8</button>
+				</div>
+			</div>
+		</div>
+		
+	
+		<canvas id="canvas" width="100%" height="100%" class="fullsize z1"></canvas>
+		<svg id="svg" width="100%" height="100%" class="fullsize z2 ghost"></svg>
+		
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script><!-- JQuery -->
+		<script src="https://d3js.org/d3.v7.js"></script> <!-- d3.js -->
+		<script src="pdgviz.js"></script> <!-- my script -->
+	</body>
+</html>
