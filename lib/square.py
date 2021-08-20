@@ -4,15 +4,10 @@ import numpy as np
 from operator import mul
 from functools import reduce
 
-from . import A,B,C,D
-from ..pdg import PDG
-from ..dist import RawJointDist as RJD, CPT
-
-# %pwd
-# __package__ = 'pdg'
-# import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from lib import A,B,C,D
 from pdg import PDG
 from dist import RawJointDist as RJD, CPT
+
 
 _base = PDG()
 _base += A,B,C,D
@@ -25,7 +20,9 @@ missing_parents : PDG = _base.copy()
 
 adj = {'AB', 'BD', 'CD', 'AC'}
 ϕ = [np.random.random(tuple((len(v) if v.name in ed else 1) for v in _base.varlist)) for ed in adj]
+
 P = RJD(reduce(mul, ϕ), [A,B,C,D]).normalize()
+
 # P.I(A,D | B,C)
 Ed = [ ( _base(' '.join(sorted(x for X in adj for x in X if Y in X if x != Y))),
         _base(Y) ) for Y in 'ABCD' ]
