@@ -96,14 +96,15 @@ class Variable(set, metaclass=utils.CopiedType):
                     if not (atomic and '×' in V.name):
                         yield V
 
-    def atomize(self):
+    @property
+    def atoms(self):
         js = [s for s in self.structure if isinstance(s,JointStructure)]
         if len(js) == 0:
             yield self
         else:
             for s in js:
                 for v in s.components:
-                    yield from v.atomize()
+                    yield from v.atoms
 
     @property
     def ordered(self):
