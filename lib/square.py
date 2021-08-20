@@ -5,9 +5,9 @@ from operator import mul
 from functools import reduce
 
 
-%pwd
-__package__
-__name__
+# %pwd
+# __package__
+# __name__
 
 ## FOR IPYTHON ######
 if __name__ == '__main__':
