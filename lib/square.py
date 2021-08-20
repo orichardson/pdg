@@ -4,9 +4,20 @@ import numpy as np
 from operator import mul
 from functools import reduce
 
-from ..lib import A,B,C,D
-from ..pdg import PDG
-from ..dist import RawJointDist as RJD, CPT
+
+%pwd
+__package__
+__name__
+
+## FOR IPYTHON ######
+if __name__ == '__main__':
+    from pdg import PDG
+    from dist import RawJointDist as RJD, CPT
+    from lib import A,B,C,D
+else:
+    from ..lib import A,B,C,D
+    from ..pdg import PDG
+    from ..dist import RawJointDist as RJD, CPT
 
 
 _base = PDG()

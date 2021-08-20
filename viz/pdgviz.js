@@ -7,7 +7,7 @@ console.log("Custom JS Executing");
 //// version with extra node T
 // let [N, ED] = [["PS", "S", "SH", "C", "T"], [[[], ["PS"]], [["PS"], ["S"]], [["PS"], ["SH"]], [["S", "SH"], ["C"]]]];
 //// test new format
-let hypergraph = {
+var hypergraph = {
 	nodes : ["PS", "S", "SH", "C", "T", "Test 1", "Test 2"], 
 	hedges : {0: [[], ["PS"]], 
 	 1: [["PS"], ["S"]],
@@ -15,7 +15,19 @@ let hypergraph = {
 	 3: [["S", "SH"], ["C"]], 
 	 P: [["T"], ["Test 1", "Test 2"]] } 
 };
+hypergraph = {
+	nodes : ['A', 'B', 'C', 'D'],
+	hedges : {
+		p0: [['B', 'C'], ['A']],
+		p2: [['A', 'D'], ['B']],
+		p4: [['A', 'D'], ['C']],
+		p6: [['B', 'C'], ['D']]
+	}
+};
+
+
 let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
+
 		
 
 const initw = 60, inith = 40;
