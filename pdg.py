@@ -18,13 +18,18 @@ from .dist import z_mult, zz1_div
 class Labeler:
     # NAMES = ['p','q','r']
 
-    def __init__(self):
+    def __init__(self, basenames=['p']):
         self._counter = 0
         # self._edge_specific_counts = {}
 
     def fresh(self, vfrom, vto, **ctxt):
         self._counter += 1
-        return "p" + str(self._counter)
+        return self.basenames[0] + str(self._counter)
+        
+    def copy(self):
+        l = Labeler(self.basenames)
+        l._counter = self._counter
+        return l
 
 class PDG:
     # By default, use the base labeleler, which
@@ -53,7 +58,7 @@ class PDG:
 
         # get rid of extra structural edges e.g., A×B ->> A
         # HE = list(filter(lambda FT: not set(FT[1]).issubset(FT[0]), HE))
-        HE = { l : [F,T] for  l,F,T in  l_atomnames if set(T).issubset(F) }
+        HE = { l : [F,T] for  l,F,T in  l_atomnames if not set(T).issubset(F) }
 
         return N, HE
     
@@ -108,7 +113,7 @@ class PDG:
         return minime
 
     def copy(self) -> 'PDG':
-        rslt = PDG(self.labeler)
+        rslt = PDG(self.labeler.copy())
         # rslt.vars = dict(**self.vars) # variables don't need a deep copy.
 
         for vn, v in self.vars.items():
@@ -254,6 +259,11 @@ class PDG:
                 label = self.labeler.fresh(data.nfrom.name, data.nto.name)
 
             self._set_edge(data.nfrom.name, data.nto.name, label, cpd=data)
+        
+        elif isinstance(data, ConditionRequest):
+            if label is None:
+                label = self.labeler.fresh(data.given.name, data.target.name)
+            self._set_edge(data.given.name, data.target.name)
 
         elif isinstance(data, Variable):
             vari = data.copy()
