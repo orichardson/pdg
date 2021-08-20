@@ -9,10 +9,10 @@ import collections
 from numbers import Number
 
 # import utils
-from .utils import dictwo
-from .rv import Variable, ConditionRequest, Unit
-from .dist import RawJointDist as RJD, CPT #, Dist, CDist,
-from .dist import z_mult, zz1_div
+from utils import dictwo
+from rv import Variable, ConditionRequest, Unit
+from dist import RawJointDist as RJD, CPT #, Dist, CDist,
+from dist import z_mult, zz1_div
 
 
 class Labeler:
