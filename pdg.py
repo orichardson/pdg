@@ -14,21 +14,25 @@ from .rv import Variable, ConditionRequest, Unit
 from .dist import RawJointDist as RJD, CPT #, Dist, CDist,
 from .dist import z_mult, zz1_div
 
-
 class Labeler:
     # NAMES = ['p','q','r']
 
-    def __init__(self):
+    def __init__(self, basenames=['p']):
         self._counter = 0
+        self._basenames = basenames
+        self._edge_specific_counts = collections.defaultdict(lambda: 0)
         # self._edge_specific_counts = {}
 
     def fresh(self, vfrom, vto, **ctxt):
         self._counter += 1
-        return self.basenames[0] + str(self._counter)
+        self._edge_specific_counts[(vfrom,vto)] += 1
+        
+        return self._basenames[0] + str(self._counter)
         
     def copy(self):
-        l = Labeler()
+        l = Labeler(self._basenames)
         l._counter = self._counter
+        l._edge_specific_counts.update(self._edge_specific_counts)
         return l
 
 class PDG:
