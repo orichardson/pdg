@@ -1,8 +1,14 @@
 %load_ext autoreload
 %autoreload 2
+%pwd
+%cd examples
 
 import numpy as np
 import pandas as pd
+
+# from dist import RawJointDist, CPT
+# from rv import Variable, binvar, Unit
+# from pdg import *
 
 from dist import RawJointDist, CPT
 from rv import Variable, binvar, Unit

@@ -4,9 +4,9 @@
 # import numpy as np
 # import pandas as pd
 
-from dist import CPT
-from rv import binvar, Unit
-from pdg import PDG
+from ..dist import CPT
+from ..rv import binvar, Unit
+from ..pdg import PDG
 
 ############""" Example Code """##############
 
