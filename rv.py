@@ -1,7 +1,7 @@
 import itertools
 import abc
 
-import utils
+from . import utils
 
 class RV(abc.ABC):
     pass
@@ -141,7 +141,7 @@ class JointStructure:
         return "Joint ["+ ' '.join(v.name for v in self.components) +"]"
 
     def gen_cpts_for(self, pdg):
-        from dist import CPT
+        from .dist import CPT
 
         if self.joint.name in pdg.vars:
             for i,V in enumerate(self.components):

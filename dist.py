@@ -8,8 +8,8 @@ import collections
 from functools import reduce
 from operator import and_
 
-import utils
-import rv
+from . import utils
+from . import rv
 
 import warnings
 import itertools
