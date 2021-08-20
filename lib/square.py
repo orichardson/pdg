@@ -8,6 +8,11 @@ from . import A,B,C,D
 from ..pdg import PDG
 from ..dist import RawJointDist as RJD, CPT
 
+# %pwd
+# __package__ = 'pdg'
+# import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from pdg import PDG
+from dist import RawJointDist as RJD, CPT
 
 _base = PDG()
 _base += A,B,C,D
