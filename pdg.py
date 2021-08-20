@@ -57,18 +57,18 @@ class PDG:
 
         return N, HE
     
-    """
-    Custom string interpolation for interpreting PDG queries & command, making it
-    easier to construct things and do work in the context of a PDG.
-    Examples:
+    def __call__(self, *INPUT, **kwargs):
+        """
+        Custom string interpolation for interpreting PDG queries & command, making it
+        easier to construct things and do work in the context of a PDG.
+        Examples:
         M('AB')  replaces  Variable.product(M.vars['A'], M.vars['B'])
-
-    Future:
+        
+        Future:
         M('A B -> C')  returns  a β-combination of cpts.
         M('A B -> B C := ', P)  adds a matrix with the appropriate types,
-            and any missing variables with the right # of elements, if they are msising.
-    """
-    def __call__(self, *INPUT, **kwargs):
+        and any missing variables with the right # of elements, if they are msising.
+        """
         connectives = ["->"]
 
         def interpret(token):
@@ -314,8 +314,8 @@ class PDG:
     def __add__(self, other):
         rslt = self.copy()
         rslt += other;
-        return rslt
         # return (self.copy() += other)
+        return rslt
 
     def __delitem__(self, key):
         if isinstance(key, tuple):
@@ -340,10 +340,10 @@ class PDG:
                 if key in self.edges("l"):
                     self.__delitem__(self._get_edgekey(key))
 
-    # For convenience only.
-    # takes a pair (src, target) of variables, and returns the relevant cpt.
-    # Alternatively, takes a string name
     def __getitem__(self, key):
+        """ For convenience only.
+        takes a pair (src, target) of variables, and returns the relevant cpt.
+        Alternatively, takes a string name."""
         label = None
         if isinstance(key, ConditionRequest):
             gn,tn = key.given.name, key.target.name
@@ -367,18 +367,17 @@ class PDG:
             return self.graph[gn][tn]['cpd']
 
         return self.edgedata[gn,tn,label]['cpd']
-        # if (obj == )
 
     def __iter__(self):
         return self.edges("XYPαβ")
 
-    """
-    Examples:
-        M.edges("X,Y,cpd,α,β")
-        M.edges("XYLp")
-        M.edges(['X', 'Y'])
-    """
     def edges(self, spec='XY'):
+        """
+        Examples:
+            M.edges("X,Y,cpd,α,β")
+            M.edges("XYLp")
+            M.edges(['X', 'Y'])
+        """
         if type(spec) is str:
             delims = ',; '
             for d in delims:
@@ -694,6 +693,8 @@ class PDG:
 
     ##### OTHERS ##########
     def make_edge_mask(self, distrib):
+        """returns a PDG with the same shape as this one,
+        but with the given distribution's marginals"""
         M = PDG()
 
         for name,V in self.vars.items():
@@ -706,14 +707,15 @@ class PDG:
         return M
 
     def factor_product(self, repr="raw") -> RJD:
+        """ pretend the PDG is a factor graph, with weights θ := β """ 
         # start with uniform
         # d = RJD.unif(self.atomic_vars)
 
         d = self.genΔ(RJD.unif, repr)
-        for X,Y,cpt,*_ in self:
+        for X,Y,cpt,β in self.edges("XYPβ"):
             if cpt is not None:
                 #hopefully the broadcast works...
-                d.data *= np.nan_to_num( d.broadcast(cpt), nan=1)
+                d.data *= np.nan_to_num( d.broadcast(cpt) ** β, nan=1)
             # print(d.data)
 
         d.data /= d.data.sum()
@@ -744,10 +746,10 @@ class PDG:
                 # if change == 0: break
         return (dist, iters) if store_iters else dist
 
-    def iter_GS_ordered(self, ordered_edges=None,
-            max_iters: Number = 200,  tol=1E-30,
+    def iter_GS_ordered(self, ordered_edges=None, 
+            max_iters: Number = 200,  tol=1E-30, 
             store_iters=False, repr="atomic") -> RJD:
-
+        
         if ordered_edges is None:
             ordered_edges = list(self.edges("XYP"))
 
@@ -771,10 +773,14 @@ class PDG:
         else:
             print('hit max iters, still changing at rate ', change, ' (tol = %f)'%tol)
 
-        return (dist, iters) if store_iters else dist
         # return self.iterGS(init=self.genΔ(RJD.unif, repr), cpdgen=cpdgen)
+        return (dist, iters) if store_iters else dist
 
     def GS_step(self, dist : RJD, XYP) -> RJD:
+        """
+        perform a Gibbs Sampling procedure with a variable on the distribution `dist`
+        according to the edge XYP = (X: Var, Y: Var, cpd:CPD[Y|X] )
+        """
         X,Y,cpd = XYP
         not_target = list(v for v in self.rawvarlist if
             len(set(v.name.split('×')) & set(Y.name.split("×"))) == 0)

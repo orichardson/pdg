@@ -1,7 +1,7 @@
 import itertools
 import abc
 
-import utils
+from . import utils
 
 class RV(abc.ABC):
     pass
