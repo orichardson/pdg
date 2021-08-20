@@ -44,14 +44,19 @@ class PDG:
 
     @property
     def hypergraph_object(self):
-        def each_name(vs):
+        def _names(vs):
             return [v.name for v in vs]
 
-        N = each_name(self.atomic_vars)
-        HE = ((each_name(fr.atomize()),each_name(to.atomize())) for (fr,to) in self.edges())
-        HE = list(filter(lambda FT: not set(FT[1]).issubset(FT[0]), HE))
+        N = _names(self.atomic_vars)
+        
+        l_atomnames = ((l, _names(fr.atoms), _names(to.atoms)) for (l,fr,to) in self.edges('lXY'))
+
+        # get rid of extra structural edges e.g., A×B ->> A
+        # HE = list(filter(lambda FT: not set(FT[1]).issubset(FT[0]), HE))
+        HE = { l : [F,T] for  l,F,T in  l_atomnames if set(T).issubset(F) }
 
         return N, HE
+    
     """
     Custom string interpolation for interpreting PDG queries & command, making it
     easier to construct things and do work in the context of a PDG.
@@ -780,8 +785,10 @@ class PDG:
 
     ############# Utilities ##############
 
-    def standard_library(self, repr='atomic', SHAPE=(-1,) ):
-        lib = DistLibrary(self, shape=SHAPE)
+    def standard_library(self, repr='atomic'):
+        from store import TensorLibrary
+                
+        lib = TensorLibrary(decoder = lambda vec : RJD(vec, self.rawvarlist))
 
         def store(*a, **b):
             def _store_inner(distrib, iterdatalist= []):
@@ -810,181 +817,3 @@ class PDG:
     #     """ Algorithm:
     #     """
     #     pass
-
-
-# from collections import frozenset as fz
-
-class DistLibrary:
-    def __init__(self, M, shape=(-1,), store_repr='atomic', out_repr='RJD.atomic', **dists):
-        self.M = M
-        self.dists = dists
-        self.ushape = shape
-        self.store_repr = store_repr
-        self.out_repr = out_repr
-        self.ushape = M.genΔ(repr=store_repr).data.reshape(shape).shape
-
-    def __getattr__(self, name):
-        return getattr(View(self), name)
-        # if name[0] == '_':
-            # pass
-        # return View(self).__getattr__(name)
-
-    def __call__(self, *posspec, **kwspec):
-        return View(self)(*posspec, **kwspec)
-
-
-    def _validate(self, value):
-        try:
-            if isinstance(value, RJD):
-                return value.data.reshape(self.ushape)
-            elif isinstance(value, np.ndarray):
-                return value.reshape(self.ushape)
-        except:
-            raise TypeError("Only put distributions over {"+",".join(v.name for v in self.M.varlist)+"} library")
-
-    def _prepare(self, stored_dist):
-        wrapper_type,encoding = self.out_repr.split(".")
-        if wrapper_type == "RJD":
-            return RJD(stored_dist, self.M.getvarlist(encoding))
-        elif wrapper_type == "ndarray":
-            return stored_dist
-
-    def __setitem__(self, key, val):
-        self.dists[frozenset(key)] = self._validate(val)
-
-    #TODO: niciefy this
-    # def __repr__(self):
-    #     keystr = '; '.join(
-    #         (str(s[0])+"="+str(s[1]) if isinstance(s,tuple) and len(s)==2 \
-    #         else s) for s in self.dists.keys())
-    #     return "<DistLib with keys {%s}>"%s
-
-    def __pos__(self):
-        return +View(self)
-
-def _has2(v):
-    return isinstance(v, tuple) and len(v) == 2
-def _mixed2dict( mixed_selector, default ):
-    return dict((x if _has2(x) else (x, default)) for x in mixed_selector)
-
-import itertools
-from inspect import getsource
-class LibView:
-    def __init__(self, library, *selector, **kwselect):
-        self._lib = library
-        self._most_recent_tag = selector[-1] if len(selector) > 0 else None
-        self._filters = kwselect.get('_filters', [])
-        self._sel  = frozenset(itertools.chain(selector,
-            ((s,d) for s,d in kwselect.items() if not (isinstance(s,str) and s[0] == '_')) ))
-        self._cached = list(self._consist_from_lib())
-        # sel is a set of tuples (either k:v or tag)
-
-    def _consist_from_lib(self):
-        for k,d in self._lib.dists.items():
-            # if self._sel.issubset(k) \
-            if all(((t in k or t[0] in k) if _has2(t) else (t in k)) for t in self._sel ) \
-                    and all(f(k) for f in self._filters):
-                yield k,d
-
-    def along(self, axis, return_tags=False):
-        reverse=False
-        if isinstance(axis,str) and axis[0] in '+-':
-            reverse = (axis[0] == '-')
-            axis = axis[1:]
-
-        values = []
-        for S,d in (self._cached if self._cached else self._consist_from_lib()):
-             v = next((atom[1] for atom in S if atom[0] == axis), None)
-             if v is not None:
-                 values.append( (v,(S,self._lib._prepare(d))) )
-
-        return (((S,d) if return_tags else d) for v,(S,d) in sorted(values, reverse=reverse))
-
-    def filter(self, f):
-        return View(self._lib, *self._sel, _filters=[*self._filters, f])
-
-    @property
-    def μs(self):
-        for s,d in self:
-            yield self._lib._prepare(d)
-
-    @property
-    def matches(self):
-        return (s for s,d in self)
-
-    def without(self, tag, **kwargs):
-        return self.filter(lambda taglist: tag not in _mixed2dict(taglist, ...))
-
-    def set(self, dist):
-        self._lib.dists[self._sel] = self._lib._validate(dist)
-
-
-    def __iter__(self):
-        for s,d in (self._cached if self._cached else self._consist_from_lib()):
-            yield s,d
-
-    def __pos__(self):
-        lubs = []
-        for s,d in self:
-            if all(s.issubset(l) for l in lubs):
-                lubs = [ s ]
-            elif not any(l.issubset(s) for l in lubs):
-                lubs.append(s)
-        if len(lubs) != 1:
-            raise ValueError("No minimal distribution in this view! (there are %d)"%len(lubs))
-
-        return self._lib._prepare(self._lib.dists[lubs[0]])
-        # return self._lib.dists[self._sel]
-        # return next(iter(self.μs))
-
-    def __repr__(self):
-        selectorstr = '; '.join(
-            (str(s[0])+"="+str(s[1]) if isinstance(s,tuple) and len(s)==2 \
-            else str(s)) for s in self._sel)
-
-        if self._filters:
-            selectorstr += " | <%d filters>" % len(self._filters)
-
-        return "LibView { %s } (%d matches)" % (selectorstr, len(self._cached))
-
-
-    def __getattr__(self, name):
-        if frozenset([*self._sel, name]) in self._lib.dists:
-            return self._lib._prepare(self._lib.dists[name])
-
-        if name[0] == '_':
-            raise AttributeError
-
-        nextview = LibView(self._lib, *self._sel, name)
-        # if len(nextview._cached) == 0:
-        #     raise AttributeError("No distributions matching spec `%s` in library"%str(name))
-        return nextview
-
-    def __call__(self, *tags, **kwspec):
-        filters = list(self._filters)
-        if len(tags) == 1 and hasattr(tags[0], '__call__') and len(self._sel) > 0:
-            def interpreted_filter(taglist):
-                val = dict(filter(_has2, taglist)).get(self._most_recent_tag, None)
-                return tags[0](val) if val is not None else (self._most_recent_tag in taglist)
-                # TODO: LOOK UP [self._sel[-1]]
-            interpreted_filter.__doc__ = getsource(tags[0])
-            filters.append(interpreted_filter)
-            T = self._sel - {self._most_recent_tag}
-        else:
-            T = [*self._sel, *tags]
-
-        nextview = LibView(self._lib,  *T, _filters=filters, **kwspec)
-        # if len(nextview._cached) == 0:
-        #     raise ValueError("No distributions matching spec `%s` in library"%str(name))
-        return nextview
-
-    # Before uncommenting: either make underscores special, change
-    # the constructor where things are initialized, or enable a flag after
-    # construction.
-    # def __setattr__(self, key, dist):
-    #     self._lib[name, frozenset(*self._sel, key)] = dist
-
-    # This doesn't work.
-    # def __set__(self, obj, value):
-    #     print("__set__ called with: ", self, obj, value)
-    #     self._lib[self._sel] = value
