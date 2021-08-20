@@ -1,9 +1,9 @@
 import numpy as np
-import pandas as pd
+# import pandas as pd
 
 from dist import RawJointDist, CPT
 from rv import Variable, binvar, Unit
-from pdg import *
+from pdg import PDG
 
 
 # Graph: 1 -> A,  1 -> B, AB -> A, AB -> B
