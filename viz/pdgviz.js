@@ -8,11 +8,12 @@ console.log("Custom JS Executing");
 // let [N, ED] = [["PS", "S", "SH", "C", "T"], [[[], ["PS"]], [["PS"], ["S"]], [["PS"], ["SH"]], [["S", "SH"], ["C"]]]];
 //// test new format
 let hypergraph = {
-	nodes : ["PS", "S", "SH", "C", "T"], 
+	nodes : ["PS", "S", "SH", "C", "T", "Test 1", "Test 2"], 
 	hedges : {0: [[], ["PS"]], 
 	 1: [["PS"], ["S"]],
 	 2: [["PS"], ["SH"]],
-	 3: [["S", "SH"], ["C"]] } 
+	 3: [["S", "SH"], ["C"]], 
+	 P: [["T"], ["Test 1", "Test 2"]] } 
 };
 let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
 		
@@ -82,18 +83,24 @@ $(function() {
 			srcnode = lookup[src.join(",")];
 			let avgsrc = vec2(srcnode);
 			if( src.length > 0 ) {
-				srcnode.vx += (avgsrc[0] - srcnode.x) * 0.2
-				srcnode.vy += (avgsrc[1] - srcnode.y) * 0.2
 				avgsrc = [ d3.mean(src.map(v => lookup[v].x)),
 										d3.mean(src.map(v => lookup[v].y)) ];
+				srcnode.vx += (avgsrc[0] - srcnode.x) * 0.2
+				srcnode.vy += (avgsrc[1] - srcnode.y) * 0.2
 			}
 			tgtnode = lookup[tgt.join(",")];
 			let avgtgt = vec2(tgtnode);
+			// if( tgt.length > 0 ) {
+			// 	srcnode.vx += (avgsrc[0] - srcnode.x) * 0.2
+			// 	srcnode.vy += (avgsrc[1] - srcnode.y) * 0.2
+			// 	avgtgt = [ d3.mean(tgt.map(v => lookup[v].x)),
+			// 							d3.mean(tgt.map(v => lookup[v].y)) ];
+			// }
 			if( tgt.length > 0 ) {
-				srcnode.vx += (avgsrc[0] - srcnode.x) * 0.2
-				srcnode.vy += (avgsrc[1] - srcnode.y) * 0.2
 				avgtgt = [ d3.mean(tgt.map(v => lookup[v].x)),
 										d3.mean(tgt.map(v => lookup[v].y)) ];
+				tgtnode.vx += (avgtgt[0] - tgtnode.x) * 0.2
+				tgtnode.vy += (avgtgt[1] - tgtnode.y) * 0.2
 			}
 
 			let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
@@ -119,15 +126,15 @@ $(function() {
 			// console.log(srcnode.id, srcnode.x, srcnode.y, '\t', tgtnode.id,  tgtnode.x, tgtnode.y);
 			// console.log(avgtgtshortened);
 			
-			context.lineWidth = 1;
-			context.setLineDash([4,1]);
-			context.strokeStyle = 'red';
-			context.beginPath();
-			// context.moveTo(srcnode.x, srcnode.y);
-			// context.lineTo(tgtnode.x, tgtnode.y);
-			context.moveTo(...avgsrcshortened);
-			context.lineTo(...avgtgtshortened);
-			context.stroke();
+			// context.lineWidth = 1;
+			// context.setLineDash([4,1]);
+			// context.strokeStyle = 'red';
+			// context.beginPath();
+			// // context.moveTo(srcnode.x, srcnode.y);
+			// // context.lineTo(tgtnode.x, tgtnode.y);
+			// context.moveTo(...avgsrcshortened);
+			// context.lineTo(...avgtgtshortened);
+			// context.stroke();
 			
 
 			context.lineWidth = 1.5;
@@ -184,9 +191,11 @@ $(function() {
 			n.x = clamp(n.x, n.w/2, canvas.width - n.w/2);
 			n.y = clamp(n.y, n.h/2, canvas.height - n.h/2);
 			//drawing
-			context.moveTo(n.x, n.y);
-			context.arc(n.x, n.y, 3, 0, 2 * Math.PI);
-			context.stroke();
+			if(! N.includes(nn)) {
+				context.moveTo(n.x, n.y);
+				context.arc(n.x, n.y, 3, 0, 2 * Math.PI);
+				context.stroke();
+			}
 		});
 		context.globalAlpha = 1;
 
@@ -219,10 +228,10 @@ $(function() {
 			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.03))
 		.force("charge", d3.forceManyBody().strength(
 			n => n.display ? -100 : -100))
-		.force("link", d3.forceLink(links).id(n=>n.id)
+		.force("link", d3.forceLink(links).id(l => l.id)
 			.strength(1).distance(110).iterations(3))
 		.force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
-				.strength(0.2).distance(50).iterations(1))
+				.strength(0.2).distance(20).iterations(1))
 		.force("nointersect", d3.forceCollide().radius(n=>n.w/2)
 				.strength(0.5).iterations(5))
 		.on("tick", ontick)
