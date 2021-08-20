@@ -15,9 +15,9 @@ def primes():
         else:
             yield i
             
-from pdg import PDG
-from rv import Variable as Var
-from dist import CPT, RawJointDist as RJD
+from ..pdg import PDG
+from ..rv import Variable as Var
+from ..dist import CPT, RawJointDist as RJD
 
 _loc = locals()
 

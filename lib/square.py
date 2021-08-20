@@ -4,9 +4,9 @@ import numpy as np
 from operator import mul
 from functools import reduce
 
-from lib import A,B,C,D
-from pdg import PDG
-from dist import RawJointDist as RJD, CPT
+from ..lib import A,B,C,D
+from ..pdg import PDG
+from ..dist import RawJointDist as RJD, CPT
 
 
 _base = PDG()

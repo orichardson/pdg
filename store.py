@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
-from dist import RawJointDist as RJD
 from environs import Env
 from collections import defaultdict
 # from collections import frozenset as fz
+
+from .dist import RawJointDist as RJD
 
 from itertools import chain
 from inspect import getsource
