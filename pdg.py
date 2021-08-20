@@ -18,7 +18,7 @@ from .dist import z_mult, zz1_div
 class Labeler:
     # NAMES = ['p','q','r']
 
-    def __init__(self, basenames=['p']):
+    def __init__(self):
         self._counter = 0
         # self._edge_specific_counts = {}
 
@@ -27,7 +27,7 @@ class Labeler:
         return self.basenames[0] + str(self._counter)
         
     def copy(self):
-        l = Labeler(self.basenames)
+        l = Labeler()
         l._counter = self._counter
         return l
 
