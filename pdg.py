@@ -265,6 +265,8 @@ class PDG:
             self._set_edge(data.nfrom.name, data.nto.name, label, cpd=data)
         
         elif isinstance(data, ConditionRequest):
+            self._include_var(data.given)
+            self._include_var(data.target)    
             if label is None:
                 label = self.labeler.fresh(data.given.name, data.target.name)
             self._set_edge(data.given.name, data.target.name, label)
