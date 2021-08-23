@@ -15,15 +15,15 @@ var hypergraph = {
 	 3: [["S", "SH"], ["C"]], 
 	 P: [["T"], ["Test 1", "Test 2"]] } 
 };
-hypergraph = {
-	nodes : ['A', 'B', 'C', 'D'],
-	hedges : {
-		p0: [['B', 'C'], ['A']],
-		p2: [['A', 'D'], ['B']],
-		p4: [['A', 'D'], ['C']],
-		p6: [['B', 'C'], ['D']]
-	}
-};
+// hypergraph = {
+// 	nodes : ['A', 'B', 'C', 'D'],
+// 	hedges : {
+// 		p0: [['B', 'C'], ['A']],
+// 		p2: [['A', 'D'], ['B']],
+// 		p4: [['A', 'D'], ['C']],
+// 		p6: [['B', 'C'], ['D']]
+// 	}
+// };
 
 
 let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
@@ -234,6 +234,10 @@ $(function() {
 		return { source: src.join(","), target: tgt.join(","), index: i, label: label};
 	});
 	
+	function customForces() {
+		
+	}
+	
 
 	simulation = d3.forceSimulation(nodes)
 		.force("center",
@@ -243,8 +247,8 @@ $(function() {
 		.force("link", d3.forceLink(links).id(l => l.id)
 			.strength(1).distance(110).iterations(3))
 		.force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
-				.strength(0.2).distance(20).iterations(1))
-		.force("nointersect", d3.forceCollide().radius(n=>n.w/2)
+				.strength(0.3).distance(40).iterations(2))
+		.force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 				.strength(0.5).iterations(5))
 		.on("tick", ontick)
 		.stop();
