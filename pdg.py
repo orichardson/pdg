@@ -267,7 +267,7 @@ class PDG:
         elif isinstance(data, ConditionRequest):
             if label is None:
                 label = self.labeler.fresh(data.given.name, data.target.name)
-            self._set_edge(data.given.name, data.target.name)
+            self._set_edge(data.given.name, data.target.name, label)
 
         elif isinstance(data, Variable):
             vari = data.copy()
@@ -425,6 +425,11 @@ class PDG:
         return True
 
 
+    def _torch_inc(self, gamma=None):
+        # = min_\mu inc(\mu, gamma)
+        pass    
+        
+        
     def _build_fast_scorer(self, weightMods=None, gamma=None, repr="atomic", grad_mode=True):
         N_WEIGHTS = 5
         if weightMods is None:
