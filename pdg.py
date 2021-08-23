@@ -813,7 +813,7 @@ class PDG:
     ############# Utilities ##############
 
     def standard_library(self, repr='atomic'):
-        from store import TensorLibrary
+        from .store import TensorLibrary
                 
         lib = TensorLibrary(decoder = lambda vec : RJD(vec, self.rawvarlist))
 
