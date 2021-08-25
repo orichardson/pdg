@@ -17,6 +17,8 @@ import itertools
 import seaborn as sns
 greens = sns.light_palette("green", as_cmap=True)
 
+
+
 # recipe from https://docs.python.org/2.7/library/itertools.html#recipes
 def powerset(iterable):
     "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
@@ -29,17 +31,23 @@ def z_mult(joint, masked):
     return np.ma.where(joint == 0, 0, joint * masked)
 
 def zz1_div(top, bot):
-    """ multiply assuming zeros override nans; keep mask."""
-    #TODO remove
-    # top = np.array(top)
-    # bot = np.array(bot)
-
+    """ divide assuming 0/0 = 1. """
     rslt = np.ma.divide(top,bot)
     rslt = np.ma.where( np.logical_and(top == 0, bot == 0), 1, rslt)
     return rslt
 
 def D_KL(d1,d2):
     return z_mult(d1, np.ma.log(zz1_div(d1,d2))).sum()
+
+try:
+    import torch
+
+    def D_KL_torch(t1, t2, LOGZERO=1E12):
+        where = torch.where
+        return where( t1 == 0, 0, 
+            t1*(torch.log( where(t1==0, LOGZERO, t1) - torch.log(where(t2==0, LOGZERO, t2)))))
+except ImportError:
+    print("No torch; only numpy backend")
 
 
 class CDist(ABC): pass
@@ -169,9 +177,21 @@ def _definitely_a_list( somedata ):
         return list(somedata.values())
     return list(somedata)
 
+
+
+
 # define an event to be a value of a random variale.
 class RawJointDist(Dist):
-    def __init__(self, data, varlist):
+    def __init__(self, data, varlist, use_torch=False):
+        if use_torch and not torch.is_tensor(data):
+            data = torch.tensor(data)
+        elif not use_torch:
+            try: 
+                if torch.is_tensor(data): 
+                    data = data.detach().numpy()
+            except NameError: pass
+            
+        self._torch = use_torch        
         self.data = data.reshape(*(len(X) for X in varlist))
         self.varlist = varlist
 
@@ -191,13 +211,20 @@ class RawJointDist(Dist):
     def __pos__(self):
         return self.normalize()
     def __floordiv__(self,other):
-        return D_KL(self.data,other.data)
+        if self._torch and other._torch:
+            return D_KL_torch(self.data, other.data)
+        
+        narr = utils.nparray_of
+        return D_KL(narr(self.data), narr(other.data))
 
 
     def __repr__(self):
         varstrs = [v.name+"⟨%d⟩"%len(v) for v in self.varlist]
         # for python 3.5, with no string interpolation
-        return "RJD Δ[" + (';'.join(varstrs)) + "]--" + repr(np.prod(self.shape)) + " params"
+        if self._torch:
+            return "RJD Δ["+(';'.join(varstrs))+"]--" + str(self.data.numel)+" params"
+        else:
+            return "RJD Δ[" + (';'.join(varstrs)) + "]--" + repr(np.prod(self.shape)) + " params"
         # return f"RJD Δ[{';'.join(varstrs)}]--{np.prod(self.shape)} params"
 
 
@@ -322,28 +349,39 @@ class RawJointDist(Dist):
         idxc = self._idxs(*conditionvars)
         IDX = idxt + idxc
 
-        # sum across anything not in the index
-        joint = self.data.sum(axis=tuple(i for i in range(len(self.varlist)) if i not in IDX))
+        
 
-        # duplicate dimensions that occur multiple times by
-        # an einsum diagonalization...
-        joint_expanded = np.zeros([self.data.shape[i] for i in IDX])
-        np.einsum(joint_expanded, IDX, np.unique(IDX).tolist())[...] = joint
+        
+        if self._torch:
+            # not really expanded, but so that it's the same variable 
+            joint_expanded = self.data.sum(dim=[i for i in range(len(self.varlist)) if i not in IDX], keepdim=True)
+        else:
+            # sum across anything not in the index
+            joint = self.data.sum(axis=tuple(i for i in range(len(self.varlist)) if i not in IDX))
+            
+            # duplicate dimensions that occur multiple times by
+            # an einsum diagonalization... (only works in numpy)        
+            joint_expanded = np.zeros([self.data.shape[i] for i in IDX])
+            np.einsum(joint_expanded, IDX, np.unique(IDX).tolist())[...] = joint
+
 
         if len(idxc) > 0:
-            # if idxt is first...
-            normalizer = joint_expanded.sum(axis=tuple(i for i in range(len(idxt))), keepdims=True)
+            if self._torch:
+                normalizer = joint_expanded.sum(dim=idxt, keepdim=True)
+                matrix = (joint_expanded / normalizer).squeeze()
+            else:            
+                # if idxt is first...
+                normalizer = joint_expanded.sum(axis=tuple(i for i in range(len(idxt))), keepdims=True)
+                #if idxt is last...
+                # normalizer = joint_expanded.sum(axis=tuple(-i-1 for i in range(len(idxt))), keepdims=True)
+                matrix = joint_expanded / normalizer;
 
-            #if idxt is last...
-            # normalizer = joint_expanded.sum(axis=tuple(-i-1 for i in range(len(idxt))), keepdims=True)
-
-            # return joint_expanded / normalizer
-            matrix = joint_expanded / normalizer;
             if query_mode == "ndarray":
                 return matrix
             elif query_mode == "dataframe":
                 vfrom = reduce(and_,conditionvars)
                 vto = reduce(and_,targetvars)
+                if self._torch: matrix = matrix.detach().numpy()
                 mat2 = matrix.reshape(len(vto),len(vfrom)).T
 
                 return CPT.from_matrix(vfrom,vto, mat2,multi=False)
@@ -362,21 +400,32 @@ class RawJointDist(Dist):
 
     def prob_matrix(self, *vars, given=None):
         """ A global, less user-friendly version of
-        conditional_marginal(), which keeps indices for broadcasting. """
+        conditional_marginal(), which keeps indices for broadcasting.
+        Does not handle duplicate dimensions. """
         tarvars, cndvars = self._process_vars(vars, given=given)
+        # print([t.name for t in tarvars], "|", [c.name for c in cndvars])
         idxt = self._idxs(*tarvars)
         idxc = self._idxs(*cndvars)
         IDX = idxt + idxc
 
         N = len(self.varlist)
         dim_nocond = tuple(i for i in range(N) if i not in idxc )
-        dim_neither = tuple(i for i in range(N) if i not in IDX ) # sum across anything not in the index
-        # print("dim_nocond", dim_nocond, "dim_neither", dim_neither, "shape", self.data.shape)
-        collapsed = self.data.sum(axis=dim_neither, keepdims=True)
+        dim_neither = tuple(i for i in range(N) if i not in IDX ) 
+        # want tosum across anything not in the index
+        
+        if self._torch: # wow, torch's nonparamatricity of sum for dim=[] is crazy
+            collapsed = self.data.sum(dim=dim_neither,keepdim=True) if  len(dim_neither) \
+                else self.data
+
+        else: collapsed = self.data.sum(axis=dim_neither, keepdims=True)
 
         if len(cndvars) > 0:
-            # collapsed /= collapsed.sum(axis=dim_nocond, keepdims=True)
-            collapsed = np.ma.divide(collapsed, collapsed.sum(axis=dim_nocond, keepdims=True))
+            if self._torch: # nans are correct, but destroy the gradient. So we set them equal to zero.
+                denom = collapsed.sum(dim=dim_nocond, keepdim=True)
+                collapsed = torch.divide(collapsed, torch.where(denom==0, 1., denom))
+                # if denominator is zero, so is numerator, so at least this is a valid answer
+            else:
+                collapsed = np.ma.divide(collapsed, collapsed.sum(axis=dim_nocond, keepdims=True))
 
         return collapsed
     
@@ -385,8 +434,12 @@ class RawJointDist(Dist):
         """ Computes the entropy, or conditional
         entropy of the list of variables, given all those
         that occur after a ConditionRequest. """
-
-        return - (np.ma.log( self.prob_matrix(*vars, given=given) ) * self.data).sum() / np.log(base)
+        P = self.prob_matrix(*vars, given=given)
+        d = self.data
+        if self._torch:
+            return - (torch.log( torch.where(P==0, 1., P)) * d).sum() / np.log(base)
+        else:
+            return - (np.ma.log( P ) * d).sum() / np.log(base)
 
         ## The expanded version looks like this, but is
         ## a bit slower and not really simpler.
@@ -448,7 +501,7 @@ class RawJointDist(Dist):
     @staticmethod
     def random( vars) -> 'RawJointDist':
         varlist = _definitely_a_list(vars)
-        data = np.random.rand( *[len(X) for X in varlist] )
+        data = np.random.exponential(1, [len(X) for X in varlist] )
         return RawJointDist(data / np.sum(data), varlist)
 
 

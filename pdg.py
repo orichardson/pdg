@@ -2,6 +2,8 @@
 # %autoreload 2
 
 # import pandas as pd
+import sys # for printing.
+from random import random
 import numpy as np
 import networkx as nx
 
@@ -13,6 +15,19 @@ from .utils import dictwo
 from .rv import Variable, ConditionRequest, Unit
 from .dist import RawJointDist as RJD, CPT #, Dist, CDist,
 from .dist import z_mult, zz1_div
+
+
+try:
+    import torch
+    
+    LOGZERO=1E12
+    twhere,tlog = torch.where, torch.log
+    def zmul(prob, maybe_nan):
+        return twhere(prob == 0, 0., twhere(torch.isnan(maybe_nan), 0., maybe_nan) * prob)
+        # return twhere(prob == 0, 0., twhere(torch.isnan(maybe_nan), 0., maybe_nan) * prob)
+    # zlog = lambda t : twhere(t==0, 0., tlog(twhere(t==0, LOGZERO, t)))    
+except ImportError:
+    print("No torch; only numpy backend")
 
 class Labeler:
     # NAMES = ['p','q','r']
@@ -427,12 +442,171 @@ class PDG:
         return True
 
 
-    def _torch_inc(self, gamma=None):
-        # = min_\mu inc(\mu, gamma)
-        pass    
+    def torch_score(self, μ : RJD, γ):
+        loss = torch.tensor(0.)
+        for X,Y,cpd_df,α,β in self.edges("XYPαβ"):
+            # print("For edge %s -> %s (α=%.2f, β=%.2f)"%(X.name,Y.name,α,β))
+            # muy_x, muxy, mux = Pr(Y | X), Pr(X, Y), Pr(X)
+            muxy = μ.prob_matrix(X, Y)
+            muy_x = μ.prob_matrix(Y | X)
+
+            logcond_info = - torch.log(twhere(muxy==0, 1., muy_x))
+            # print(muxy*logcond_info)
+            
+            if cpd_df is None:
+                logliklihood = 0.
+                logcond_claimed = 0.
+            else:
+                cpt = torch.tensor(μ.broadcast(cpd_df), requires_grad=False)
+                claims = np.isfinite(cpt)
+
+                logliklihood = twhere(claims, -torch.log(twhere(cpt==0, LOGZERO, cpt)), 0.)
+                logcond_claimed = twhere(claims, logcond_info, 0.)
+                # logliklihood =  -torch.log(cpt)
+                # logcond_claimed = -torch.log(muy_x)
+        
+            # print('cpt: ', cpt, '\nμ_{Y|X}', muy_x)
+            # print('log ratio: ', muxy * (logliklihood - logcond_claimed))
+            # print('... that sums to ', (muxy * (logliklihood - logcond_claimed)).sum())
+
+            loss += β * zmul( muxy, (logliklihood-logcond_claimed)).sum()
+            loss += α*γ* zmul(muxy , logcond_info).sum()
+            # print('... loss now ', loss/np.log(2))
+
+        loss /= np.log(2)
+        loss -= γ * μ.H(...)
+        # print('after entropy')
+        # loss -= γ * zlog( μ )
+        
+        return loss
+        # Returns log base 2 by default, so base is correct already
+    
+    def _torch_opt_inc(self, gamma=None,    
+            extraTemp = 1E-3, iters=350, 
+            ret_losses:bool = True,
+            ret_iterates:bool = False
+            #, tol = 1E-8, max_iters=300 #unsupported
+            ):
+        """ = min_\mu inc(\mu, gamma) """
+        
+        if gamma is None: # This is the target gamma
+            gamma = self.gamma_default
+        γ = gamma + extraTemp        
+        
+        # uniform starting position
+        # μdata = torch.tensor(self.genΔ(RJD.unif).data, requires_grad=True)
+        μdata = torch.tensor(self.genΔ(RJD.unif).data, requires_grad=True)
+        μ = RJD(μdata, self.varlist, use_torch=True)
+        # print(μdata)
+        ozr = torch.optim.Adam([μdata], lr=2E-3)
+        # ozr = torch.optim.SGD([μdata], lr=1E-3, momentum=0.8, dampening=0.0, nesterov=True)
         
         
-    def _build_fast_scorer(self, weightMods=None, gamma=None, repr="atomic", grad_mode=True):
+        best_state = ozr.state_dict()
+        best_μdata = μdata.detach().clone()
+        went_up = False
+        cooldown = 0
+        def custom_lr(_epoch):
+            return 0.9999**_epoch
+            # relative = 0.1 if went_up else 1.
+            # if epoch > iters/4: relative *= 0.999
+            # if epoch > 2*iters/3: relative *= 0.99
+            # 
+            # 
+            # if not went_up and epoch % (iters//3) == 0:
+            #     relative *= 10
+            # 
+            # fully_discounted = relative * custom_lr.previous
+            # custom_lr.previous = fully_discounted
+            # return fully_discounted
+        custom_lr.previous = 1
+        
+        lrsched1 = torch.optim.lr_scheduler.LambdaLR(ozr, custom_lr)
+        # lrsched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(ozr, factor=0.1)
+        
+        bestl = float('inf')
+        losses = [ float('inf') ] 
+        if ret_iterates: iterates = [ μdata.detach() ]
+        
+        print()# blank line
+        
+        for it in range(iters):
+            ozr.zero_grad()
+            # print(μ.data)     
+            temp = 1E-3
+            # temp = lrsched1.get_last_lr()[0] * 2
+            nnμdata = temp*torch.logsumexp(torch.stack([μdata/temp, torch.zeros(μdata.shape)], dim=μdata.ndim), dim=-1) #soft max for +
+            # nnμdata = torch.clip(μdata, min=0) # hard max for positivity
+
+            # print(μdata)
+            μ.data = ( nnμdata / nnμdata.sum())
+            loss = self.torch_score(μ, γ)            
+            l = loss.detach().item()
+            went_up = l > losses[-1]            
+    
+            if True or went_up: # Nice printing.
+                numdig = str(len(str(iters)))
+                # sys.stdout.write(
+                #     ('[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}')\
+                #         .format(ep=it, ls=loss.detach().item(), lr=lrsched1.get_last_lr()[0], its=iters) )
+                # sys.stdout.flush()    
+                # if True: sys.stdout.write('\n')
+                print(
+                    ('[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}')\
+                        .format(ep=it, ls=loss.detach().item(), lr=lrsched1.get_last_lr()[0], its=iters) )
+                    # sys.stdout.flush()
+            
+            
+            # We know this is strictly convex, so if we went up, go back 
+                # and make a new optimizer with a smaller learning rate.
+            if went_up:
+                if cooldown == 0:
+                    print('\n', "*"*65)
+                    print('|\t current loss: {}, last loss: {}'.format(l, losses[-1]))
+                    # print('|\t reverting to state_dict: ', best_state, ' from ', ozr.state_dict())
+                    μdata = best_μdata.clone()
+                    μdata.requires_grad = True    
+                    # rebuild optimizer...
+                    ozr = torch.optim.Adam([μdata], lr=lrsched1.get_last_lr()[0]/1000)
+                    # ozr.load_state_dict(best_state)
+                    lrsched1 = torch.optim.lr_scheduler.LambdaLR(ozr, custom_lr)
+                    cooldown = 30
+                    continue
+                else: cooldown -= 1
+            
+            elif l <= bestl:
+                best_μdata = μdata.detach().clone()
+                best_state = ozr.state_dict()
+                bestl = l
+            
+            
+            ## The breadcrumbs we leave in case we get lost + a map of where we've been
+            if ret_losses: losses.append(l)
+            else: losses = [l]
+            
+            if ret_iterates: iterates.append(μdata.detach().clone())
+            else: iterates = [μdata.detach().clone()]
+
+
+            # if : # update the optimizer unless we just reset it
+            loss.backward()
+            ozr.step()
+            # if it % 10 == 0:
+            lrsched1.step()
+            # lrsched2.step(loss)
+            
+            γ += (gamma-γ) / 3. # anneal to closest
+        
+        μ.data = best_μdata
+        
+        to_ret = ()
+        if ret_iterates: to_ret += (iterates,)
+        if ret_losses: to_ret += (losses,)
+        return (μ,)+to_ret if len(to_ret) else μ
+            
+        
+        
+    def _build_fast_scorer(self, weightMods=None, gamma=None, repr="atomic", return_grads=True):
         N_WEIGHTS = 5
         if weightMods is None:
             weightMods = [lambda w : w] * N_WEIGHTS
@@ -541,7 +715,7 @@ class PDG:
             # print(gradient.min(), gradient.max(), np.unravel_index(gradient.argmax(), gradient.shape))
 
             # print('score', thescore, 'entropy', mu.H(...), "distvec sum", distvec.sum())
-            return (thescore, gradient.reshape(-1)) if grad_mode else thescore
+            return (thescore, gradient.reshape(-1)) if return_grads else thescore
 
         # def score_gradient(distvec):
         #     distvec = np.abs(distvec).reshape(*SHAPE)
@@ -658,13 +832,13 @@ class PDG:
     ####### SEMANTICS 3 ##########
     def optimize_score(self, gamma, repr="atomic", store_iters=False, **solver_kwargs ):
         scorer = self._build_fast_scorer(gamma=gamma, repr=repr,
-            grad_mode = not('jac' in solver_kwargs and solver_kwargs['jac'] == False))
+            return_grads = not('jac' in solver_kwargs and solver_kwargs['jac'] == False))
         factordist = self.factor_product(repr=repr).data.reshape(-1)
 
         init = self.genΔ(RJD.unif).data.reshape(-1)
         # alternate start:
         # init = factordist
-        iters = [ np.copy(init.data) ]
+        if store_iters: iters = [ np.copy(init.data) ]
 
         from scipy.optimize import minimize, Bounds, LinearConstraint
 
@@ -706,6 +880,9 @@ class PDG:
         return (rsltdist, iters) if store_iters else rsltdist
         # TODO: figure out how to compute this. Gradient descent, probably. Because convex.
         # TODO: another possibly nice thing: a way of testing if this is truly the minimum distribution. Will require some careful thought and new theory.
+        
+    def optimize_score_torch(self, gamma, store_iters=False, **solver_kwarg):
+        pass
 
 
     def genΔ(self, kind=RJD.random, repr="atomic"):
@@ -815,7 +992,7 @@ class PDG:
     def standard_library(self, repr='atomic'):
         from .store import TensorLibrary
                 
-        lib = TensorLibrary(decoder = lambda vec : RJD(vec, self.rawvarlist))
+        lib = TensorLibrary(decoder = lambda vec : RJD(vec, self.varlist))
 
         def store(*a, **b):
             def _store_inner(distrib, iterdatalist= []):
@@ -830,11 +1007,11 @@ class PDG:
         store('gibbs','GS','≺', 'ordered')(*self.iter_GS_ordered(repr=repr, store_iters=True))
         store('opt',γ=0)(*self.optimize_score(0, repr=repr, store_iters=True, tol=1E-20))
 
-        STD_GAMMAS = [1E-10,1E-7, 1E-5, 1E-4, 1E-3, 1E-2, .1,
-            .2, .5, .8, .9, .999, 1, 1.01, 1.1, 1.5, 2, 3]
+        STD_GAMMAS = [1E-20, 1E-10,1E-7, 1E-5, 1E-4, 1E-3, 1E-2, .1,
+            .2, .5, .8, .9, .999, 1, 1.001, 1.1, 1.5, 2, 3]
 
         for γ in STD_GAMMAS:
-            store('opt', γ=γ)(self.optimize_score(γ, repr=repr, store_iters=False, tol=1E-20))
+            store('opt', γ=γ)( self.optimize_score(γ, repr=repr, store_iters=False, tol=1E-20) )
         return lib
 
     def draw(self):

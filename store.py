@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-from environs import Env
 from collections import defaultdict
 # from collections import frozenset as fz
 
 from .dist import RawJointDist as RJD
+from .utils import nparray_of
 
 from itertools import chain
 from inspect import getsource
@@ -85,7 +85,7 @@ class TensorLibrary:
             try:
                 argvalue = value
                 if isinstance(value, RJD): value = value.data
-                elif isinstance(value, Env): value = value.TT
+                # elif isinstance(value, Env): value = value.TT
                 
                 value = np.asarray(value) #try this
                 return value.reshape(self.ushape)
@@ -317,6 +317,12 @@ class LView:
 
         return "LView { %s } (%d matches)" % (selectorstr, len(self._cached))
 
+    
+    def tag_sort(self, fun):
+        val_tag = sorted([(fun(t), S) for S,t in self])
+        return val_tag
+        # return [t for v,t in val_tag]
+            
 
     def __getattr__(self, name):
         if frozenset([*self._sel, name]) in self._lib.tensordata:
@@ -347,6 +353,70 @@ class LView:
         # if len(nextview._cached) == 0:
         #     raise ValueError("No distributions matching spec `%s` in library"%str(name))
         return nextview
+        
+        
+    def pca_view(self, ax=None, arrows=True, transform=None):    
+        import numpy as np
+        from sklearn.decomposition import PCA
+        from matplotlib import pyplot as plt
+        from matplotlib import colors
+        from matplotlib.cm import get_cmap
+        cmaps = [get_cmap(cmn) for cmn in ["Blues", "Reds", "Greens", "Greys", "Oranges", "Purples"]]
+
+        # nametrace = [( "%d"%i, t) for i,t in enumerate(unnamedtraces)] + [(k,t) for k,t in kwtraces.items()]
+        # alltraces = np.vstack([nparray_of(trace).reshape(len(trace),-1) for n,trace in nametrace])
+        all_tensors = np.vstack([v.reshape(-1) for v in self.tensors])
+        
+        if transform == None:
+            pca = PCA(n_components=2)
+            pca.fit(all_tensors)
+            expl = pca.explained_variance_ratio_
+            print("Explained_variance:", expl, "\t(total: %f)"%sum(expl))
+            
+            transform = pca.transform
+
+        #pca.transform(ddata).shape
+        if ax == None:
+            fig, ax = plt.subplots()
+        
+        artistname = []
+        for i,(n,t) in enumerate(nametrace):
+            ddata = nparray_of(t).reshape(len(t),-1)
+            X,Y = transform(ddata)[:,:].T
+            U,V = np.diff(X), np.diff(Y) 
+            # norm = np.sqrt(U**2 + V**2)
+        #     norm = np.where(norm==0, 1, norm)
+        
+            cmap=cmaps[i%len(cmaps)]
+
+            
+
+            # print(len(X))
+            if len(X) == 1:
+                art = ax.scatter(X,Y, s=150, c = cmap([0.7]), alpha=0.8)
+            
+            elif len(X) > 1:
+                ax.plot(X,Y,'-', alpha=0.1, color=cmap(0.9))
+                if arrows:
+                    # maxuv = np.abs(U + V*1j).max()
+                    ax.quiver(X[:-1]+U/2, Y[:-1]+V/2, U*0.9, V*0.9, np.linspace(0.15,0.95,len(X)),
+                        pivot="mid", angles="xy",headwidth=5, headaxislength=3.5,
+                        width=0.005, scale_units='xy', scale=1,
+                        alpha=1, zorder=4, cmap=cmap, norm=colors.Normalize(0,1)
+                    )
+                    # ax.barbs(X[:-1]+U/2, Y[:-1]+V/2, U/2, V/2, np.linspace(0,1,len(X)-1),
+                    #       zorder=4, alpha=0.3, cmap=cmap)
+
+                art = ax.scatter(X,Y, s=100, c =cmap( np.linspace(0.15,0.95,len(X))  ),
+                    zorder=5,
+                     # linewidths=1, edgecolors='k', 
+                    alpha=0.5)
+
+                      
+            artistname.append((art,n))
+
+        ax.legend(*zip(*artistname))
+
 
     # Before uncommenting: either make underscores special, change
     # the constructor where things are initialized, or enable a flag after

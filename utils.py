@@ -13,6 +13,56 @@ from abc import ABCMeta
 
 import numpy as np
 
+def nparray_of( maybe_tensor ):    
+    # TODO: RJD  
+    try:
+        import torch
+        if torch.is_tensor(maybe_tensor):
+            return maybe_tensor.detach().numpy()
+        elif isinstance(maybe_tensor, list) and len(maybe_tensor) and torch.is_tensor(maybe_tensor[0]):
+            return np.array([t.detach().numpy() for t in maybe_tensor])
+    except ImportError: pass
+        
+    try:
+        from .dist import RawJointDist as RJD
+        if isinstance(maybe_tensor, RJD):
+            return maybe_tensor.data
+        elif isinstance(maybe_tensor, list) and len(maybe_tensor) and isinstance(maybe_tensor[0], RJD):
+            return np.stack( [μ.data for μ in maybe_tensor] )
+    except ImportError: pass
+            
+        # print("it's a ", type(maybe_tensor),':', maybe_tensor)
+    return np.array(maybe_tensor)
+
+import torch
+tensor = torch.tensor
+from torch import logsumexp 
+kd = dict(keepdim=True)
+
+def t_max(arr, temp = 0, axis=None):
+    if temp == 0:
+        # @autograd fix
+        # return np.asarray(arr).max(axis=axis, **kd)
+        return (arr).max(axis=axis, **kd).values
+    else:
+        ### Would like to do this, but numerically unstable. 
+        # return temp * np.log( np.exp(arr/temp).sum(**ufunc_kwargs) )
+        ### Unfortunately scipy's logsumexp deals with temperature wrong.
+        return temp*logsumexp(torch.div(arr, temp), axis=axis, **kd)
+        
+    
+def t_argmax(arr, temp=0, axis=None):
+    if temp == 0:
+        if not torch.is_tensor(arr):
+            arr = torch.tensor(arr)
+        almost = (arr == arr.max(axis=axis, **kd).values) +0.0
+        return almost / almost.sum(axis=axis, **kd)
+
+    else:
+        ascaled = torch.div(arr, temp)
+        almost = torch.exp(ascaled - logsumexp(ascaled, axis=axis, **kd))
+        return almost / almost.sum(axis=axis, **kd)
+
 def joint_index(varlist):
     """Given sets/variables/lists [Unit, A, B, C], reutrns
     np.array([ (⋆, a0, b0, c0), .... (⋆, a_m, b_n, c_l) ]) 
