@@ -495,88 +495,62 @@ class PDG:
         
         # uniform starting position
         # μdata = torch.tensor(self.genΔ(RJD.unif).data, requires_grad=True)
-        μdata = torch.tensor(self.genΔ(RJD.unif).data, requires_grad=True)
+        μdata = torch.tensor(self.genΔ(RJD.unif).data, dtype=torch.double, requires_grad=True)
         μ = RJD(μdata, self.varlist, use_torch=True)
-        # print(μdata)
-        ozr = torch.optim.Adam([μdata], lr=2E-3)
+
+        ozr = torch.optim.Adam([μdata], lr=8E-4)
+        # ozr = torch.optim.Adam([μdata], lr=5E-4)
         # ozr = torch.optim.SGD([μdata], lr=1E-3, momentum=0.8, dampening=0.0, nesterov=True)
-        
-        
-        best_state = ozr.state_dict()
+        # ozr = torch.optim.ASGD([μdata], lr=5E-4)
+
         best_μdata = μdata.detach().clone()
-        went_up = False
-        cooldown = 0
-        def custom_lr(_epoch):
-            return 0.9999**_epoch
-            # relative = 0.1 if went_up else 1.
-            # if epoch > iters/4: relative *= 0.999
-            # if epoch > 2*iters/3: relative *= 0.99
-            # 
-            # 
-            # if not went_up and epoch % (iters//3) == 0:
-            #     relative *= 10
-            # 
-            # fully_discounted = relative * custom_lr.previous
-            # custom_lr.previous = fully_discounted
-            # return fully_discounted
-        custom_lr.previous = 1
-        
-        lrsched1 = torch.optim.lr_scheduler.LambdaLR(ozr, custom_lr)
+
+        # def custom_lr(epoch):
+        #     return 0.9999 ** (epoch ** 1.5)
+        # lrsched1 = torch.optim.lr_scheduler.LambdaLR(ozr, custom_lr)
+        # lrsched1 = torch.optim.lr_scheduler.ExponentialLR(ozr, 0.99999)
+        lrsched1 = torch.optim.lr_scheduler.CosineAnnealingLR(ozr, 10)
         # lrsched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(ozr, factor=0.1)
         
         bestl = float('inf')
         losses = [ float('inf') ] 
         if ret_iterates: iterates = [ μdata.detach() ]
         
-        print()# blank line
-        
-        for it in range(iters):
-            ozr.zero_grad()
-            # print(μ.data)     
-            temp = 1E-3
+        def todistrib(raw_data):
+            temp = 2E-3
             # temp = lrsched1.get_last_lr()[0] * 2
-            nnμdata = temp*torch.logsumexp(torch.stack([μdata/temp, torch.zeros(μdata.shape)], dim=μdata.ndim), dim=-1) #soft max for +
+            ## slowly drift temp
+            # temp += (lrsched1.get_last_lr()[0]*2 - temp) / 4
+            nnμdata = temp*torch.logsumexp(torch.stack([raw_data/temp, torch.zeros(raw_data.shape)], dim=raw_data.ndim), dim=-1) #soft max for +
             # nnμdata = torch.clip(μdata, min=0) # hard max for positivity
 
             # print(μdata)
-            μ.data = ( nnμdata / nnμdata.sum())
+            return ( nnμdata / nnμdata.sum())
+        
+        for it in range(iters):
+            # ozr.zero_grad()
+            ozr.zero_grad(set_to_none=True)
+            
+            μ.data = todistrib(μdata)
             loss = self.torch_score(μ, γ)            
             l = loss.detach().item()
             went_up = l > losses[-1]            
     
-            if True or went_up: # Nice printing.
+            if it%17 == 0 or went_up: # Nice printing.
                 numdig = str(len(str(iters)))
-                # sys.stdout.write(
+                sys.stdout.write(
+                    ('\r[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}')\
+                        .format(ep=it, ls=loss.detach().item(), lr=lrsched1.get_last_lr()[0], its=iters) )
+                sys.stdout.flush()    
+                # if True: sys.stdout.write('\n')
+                # print(
                 #     ('[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}')\
                 #         .format(ep=it, ls=loss.detach().item(), lr=lrsched1.get_last_lr()[0], its=iters) )
-                # sys.stdout.flush()    
-                # if True: sys.stdout.write('\n')
-                print(
-                    ('[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}')\
-                        .format(ep=it, ls=loss.detach().item(), lr=lrsched1.get_last_lr()[0], its=iters) )
-                    # sys.stdout.flush()
             
             
-            # We know this is strictly convex, so if we went up, go back 
-                # and make a new optimizer with a smaller learning rate.
-            if went_up:
-                if cooldown == 0:
-                    print('\n', "*"*65)
-                    print('|\t current loss: {}, last loss: {}'.format(l, losses[-1]))
-                    # print('|\t reverting to state_dict: ', best_state, ' from ', ozr.state_dict())
-                    μdata = best_μdata.clone()
-                    μdata.requires_grad = True    
-                    # rebuild optimizer...
-                    ozr = torch.optim.Adam([μdata], lr=lrsched1.get_last_lr()[0]/1000)
-                    # ozr.load_state_dict(best_state)
-                    lrsched1 = torch.optim.lr_scheduler.LambdaLR(ozr, custom_lr)
-                    cooldown = 30
-                    continue
-                else: cooldown -= 1
             
-            elif l <= bestl:
-                best_μdata = μdata.detach().clone()
-                best_state = ozr.state_dict()
+            if l <= bestl:
+                best_μdata = μ.data.detach().clone()
                 bestl = l
             
             
@@ -798,6 +772,9 @@ class PDG:
 
     # TODO: Not sure if these are working properly in the presence of incomplete cpts..
     def Inc(self, p, ed_vector=False):
+        if p._torch:
+            raise NotImplementedError()
+        
         Prp = p.prob_matrix
         # n_cpds = len(self.edgedata) # of edges
         Incv = np.zeros((len(self.edgedata),*p.shape),dtype=np.complex_)
@@ -815,19 +792,32 @@ class PDG:
     def IDef(self, p, ed_vector=False):
         Prp = p.prob_matrix
 
-        # n_cpds = len(self.edgedata) # of edges
-        IDefv = np.zeros((len(self.edgedata)+1,*p.shape),dtype=np.complex_)
-        for i,(X,Y,α) in enumerate(self.edges("XYα")):
-            IDefv[i,...] = α * p.data * ( - np.ma.log(  Prp(Y | X ) ))
+        if p._torch and (ed_vector is False):  # if you insist on grads...
+            idef = torch.tensor(0.)
+            for i,(X,Y,α) in enumerate(self.edges("XYα")):
+                # pxy = Prp(X,Y)
+                pxy = p.data
+                plogp = (pxy * torch.log( torch.where(pxy==0, 1., Prp(Y | X))))
+                idef +=  - α * plogp.sum()
+                # print(X.name, Y.name, temp.shape, temp.sum())
+            idef = idef/np.log(2) -  p.H(...)
+            return idef 
+        
+        else: # we can do the interesting thing
+            if p._torch:
+                p = RJD(p.data.detach().numpy(), p.varlist, False)
+                Prp = p.prob_matrix
+            # n_cpds = len(self.edgedata) # of edges
+            IDefv = np.zeros((len(self.edgedata)+1,*p.shape))
+            for i,(X,Y,α) in enumerate(self.edges("XYα")):
+                IDefv[i,...] = α * p.data * ( - np.ma.log(  Prp(Y | X ) ))
 
-        IDefv[i+1,...]  += p.data * np.ma.log(p.data)
-        IDefv /= np.log(2)
-        # minus negative entropy
-        # print(IDefv.shape)
+            IDefv[i+1,...]  += p.data * np.ma.log(p.data)
+            IDefv /= np.log(2)
 
-        if ed_vector:
-            return IDefv.sum(axis=tuple(range(1, IDefv.ndim)))
-        return IDefv.sum()
+            if ed_vector:
+                return IDefv.sum(axis=tuple(range(1, IDefv.ndim)))
+            return IDefv.sum()
 
     ####### SEMANTICS 3 ##########
     def optimize_score(self, gamma, repr="atomic", store_iters=False, **solver_kwargs ):

@@ -348,16 +348,19 @@ class RawJointDist(Dist):
         idxt = self._idxs(*targetvars)
         idxc = self._idxs(*conditionvars)
         IDX = idxt + idxc
-
-        
+        neitheridx =  [i for i in range(len(self.varlist)) if i not in IDX ]
 
         
         if self._torch:
             # not really expanded, but so that it's the same variable 
-            joint_expanded = self.data.sum(dim=[i for i in range(len(self.varlist)) if i not in IDX], keepdim=True)
+            # this is really stupid, because of the numpy incompatibility
+            if not len(neitheridx):
+                joint_expanded = self.data
+            else:
+                joint_expanded = self.data.sum(dim=neitheridx, keepdim=True)
         else:
             # sum across anything not in the index
-            joint = self.data.sum(axis=tuple(i for i in range(len(self.varlist)) if i not in IDX))
+            joint = self.data.sum(axis=tuple(neitheridx) )
             
             # duplicate dimensions that occur multiple times by
             # an einsum diagonalization... (only works in numpy)        
@@ -368,7 +371,9 @@ class RawJointDist(Dist):
         if len(idxc) > 0:
             if self._torch:
                 normalizer = joint_expanded.sum(dim=idxt, keepdim=True)
-                matrix = (joint_expanded / normalizer).squeeze()
+                matrix = (joint_expanded / normalizer).permute(IDX).squeeze()
+                # The torch version still has to reorder the columns...
+                # matrix = _matrix.
             else:            
                 # if idxt is first...
                 normalizer = joint_expanded.sum(axis=tuple(i for i in range(len(idxt))), keepdims=True)
@@ -386,11 +391,14 @@ class RawJointDist(Dist):
 
                 return CPT.from_matrix(vfrom,vto, mat2,multi=False)
         else:
+            matrix = joint_expanded.permute(IDX).squeeze() if self._torch else joint_expanded
+            
             # return joint_expanded
             if query_mode == "ndarray":
-                return joint_expanded
+                return matrix
             elif query_mode == "dataframe":
-                mat1 = joint_expanded.reshape(-1,1).T;
+                if self._torch: matrix = matrix.detach().numpy()
+                mat1 = matrix.reshape(-1,1).T;
                 return CPT.from_matrix(rv.Unit, reduce(and_,targetvars), mat1,multi=False)
 
     # returns the marginal on a variable
