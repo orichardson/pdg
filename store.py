@@ -186,6 +186,13 @@ class LView:
         for s,d in self:
             yield d
             
+    @property
+    def raw_tensors(self):
+        return [d for S,d in self.raw]
+    
+    def nonnan_tensors(self):
+        return [d for S,d in self.raw if not np.any(np.isnan(d)) ]
+            
     @property 
     def df(self):
         mykeys = _mixed2dict(self._sel, None).keys()

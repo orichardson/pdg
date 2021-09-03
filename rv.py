@@ -24,6 +24,13 @@ class Variable(set, metaclass=utils.CopiedType):
 
     @staticmethod
     def product( *varis):
+        if len(varis) == 1:
+            if isinstance(varis[0], Variable):
+                return varis[0]
+            return Variable.product(*varis[0])
+        elif len(varis) == 0:
+            return Unit
+            
         kwargs = {"default_value" : (), "name" : () }
 
         for v in varis:

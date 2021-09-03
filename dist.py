@@ -44,8 +44,8 @@ try:
 
     def D_KL_torch(t1, t2, LOGZERO=1E12):
         where = torch.where
-        return where( t1 == 0, 0, 
-            t1*(torch.log( where(t1==0, LOGZERO, t1) - torch.log(where(t2==0, LOGZERO, t2)))))
+        return where( t1 == 0., 0., 
+            t1*(torch.log( where(t1==0., LOGZERO, t1) - torch.log(where(t2==0, LOGZERO, t2))))).sum()
 except ImportError:
     print("No torch; only numpy backend")
 
@@ -185,7 +185,7 @@ class RawJointDist(Dist):
     def __init__(self, data, varlist, use_torch=False):
         if use_torch and not torch.is_tensor(data):
             data = torch.tensor(data)
-        elif not use_torch:
+        elif not use_torch and not isinstance(data, np.ndarray):
             try: 
                 if torch.is_tensor(data): 
                     data = data.detach().numpy()
@@ -201,7 +201,42 @@ class RawJointDist(Dist):
 
         self._query_mode = "dataframe" # query mode can either be
             # dataframe or ndarray
+            
 
+    def npify(self):
+        data = self.data.detach().numpy() if self._torch else self.data
+        return RawJointDist(data, self.varlist, False)    
+
+    def torchify(self, requires_grad=True):
+        # """ if requires_grad is different, and already has a torch tensor
+        # as a back-end, do this in in place. """
+        if self._torch:
+            if self.data.requires_grad == requires_grad:
+                return self
+                
+            data = self.data.detach()
+            data.requires_grad = requires_grad
+            
+        elif not self._torch:
+            data = torch.tensor(self.data, requires_grad=requires_grad)
+            
+        return RawJointDist(data, self.varlist, True)    
+    
+    def require_grad(self):
+        """ an in-place method to re-enable gradients. """
+        if self._torch:
+            # self.data.grad = None
+            if self.data.requires_grad:
+                # reset instead
+                self.data.grad = None
+                self.data = self.data.detach()
+                self.data.requires_grad = True
+            else:
+                self.data.requires_grad = True
+            return self
+            
+        raise ValueError("This RJD does not have a torch back-end. First torchify.")
+    
     # Both __mul__ and __rmul__ reqiured to do things like multiply by constants...
     def __mul__(self,other):
         return RawJointDist(self.data * other, self.varlist)
@@ -219,13 +254,16 @@ class RawJointDist(Dist):
 
 
     def __repr__(self):
-        varstrs = [v.name+"⟨%d⟩"%len(v) for v in self.varlist]
+        varstrs = [v.name+"%d"%len(v) for v in self.varlist]
+        # return f"RJD Δ[{';'.join(varstrs)}]--{np.prod(self.shape)} params"
         # for python 3.5, with no string interpolation
         if self._torch:
-            return "RJD Δ["+(';'.join(varstrs))+"]--" + str(self.data.numel)+" params"
+            return "RJD Δ("+('; '.join(varstrs))+") as tensor⟨"+','.join(map(str, self.data.shape))+"⟩"
+             # + str(self.data.numel())+" params"
         else:
-            return "RJD Δ[" + (';'.join(varstrs)) + "]--" + repr(np.prod(self.shape)) + " params"
-        # return f"RJD Δ[{';'.join(varstrs)}]--{np.prod(self.shape)} params"
+            # return "(np) RJD Δ[" + ('; '.join(varstrs)) + " ndarray]" 
+            return "RJD Δ("+('; '.join(varstrs))+") as ndarray⟨"+','.join(map(str,self.data.shape))+"⟩"
+            # + repr(np.prod(self.shape)) + " params"
 
 
     @property
