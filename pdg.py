@@ -3,7 +3,7 @@
 
 # import pandas as pd
 import sys # for printing.
-from random import random
+# from random import random
 import numpy as np
 import networkx as nx
 
@@ -194,21 +194,43 @@ class PDG:
             if len(spec) == 3:
                 label = spec[2]
         elif type(spec) is str:
-            for xyl in self.edgedata.keys():
+            for xyl in self.edges("Xn,Yn,l"):
                 if ','.join(xyl) in spec or spec == xyl[-1]:
                     gn, tn, label = xyl
+        
+        if label == None:
+            if len(self.graph[gn][tn]) == 1:
+                label = list(self.graph[gn][tn])[0]
+            else:
+                raise ValueError("Spec is not unique! Matches edges: ", repr(list(self.graph[gn][tn])))
+        
+        if (gn,tn,label) in self.edgedata:
+            return gn,tn,label
         else:
-            raise ValueError("no edge matching: '"+ repr(spec) +"'")
+             raise ValueError("no edge matching: '"+ repr(spec) +"'")
+            
 
-        return gn,tn,label
 
-    def with_params(self, **kwargs):
+    def copy_with_params(self, **kwargs):
         rslt = self.copy()
         for param, val in kwargs.items():
             if type(val) is dict:
                 for spec, defn in val.items():
-                    self.edgedata[self._get_edgekey(spec)][param] = defn
+                    rslt.edgedata[rslt._get_edgekey(spec)][param] = defn
         return rslt
+    
+    def set_alpha(self, edge_spec, α):
+        self.edgedata[self._get_edgekey(edge_spec)]['alpha'] = α
+    
+    def set_beta(self, edge_spec, β):
+        self.edgedata[self._get_edgekey(edge_spec)]['alpha'] = β
+        
+    def update_all_weights(self, a=None, b=None):
+        for xyl in self.edges('Xn,Yn,l'):
+            if a is not None:
+                self.edgedata[xyl]['alpha'] = a 
+            if b is not None:
+                self.edgedata[xyl]['beta'] = b 
 
     def _apply_structure(self, focus=None):
         if focus is None:
@@ -372,48 +394,49 @@ class PDG:
                     self.__delitem__(self._get_edgekey(key))
 
     def __getitem__(self, key):
-        """ For convenience only.
-        takes a pair (src, target) of variables, and returns the relevant cpt.
+        """ 
+        takes an edge specification, and returns the relevant data as a namedtuple
         Alternatively, takes a string name."""
-        label = None
-        if isinstance(key, ConditionRequest):
-            gn,tn = key.given.name, key.target.name
-            # raise KeyError("Multiple options possible.")
-        elif type(key) == tuple and type(key[0]) is str:
-            # normal strings can be looked up as a tuple
-            gn,tn = key[:2]
-            if len(key) == 3:
-                label = key[2]
-        else:
-            try:
-                gn,tn,label = self._get_edgekey(key)
-            except:
-                print(key, 'is not a valid key')
-                return
-
-        if label == None:
-            if len(self.graph[gn][tn]) == 1:
-                return next(iter(self.graph[gn][tn].values()))['cpd']
-
-            return self.graph[gn][tn]['cpd']
-
-        return self.edgedata[gn,tn,label]['cpd']
-
+        # label = None
+        # if isinstance(key, ConditionRequest):
+        #     gn,tn = key.given.name, key.target.name
+        #     # raise KeyError("Multiple options possible.")
+        # elif type(key) == tuple and type(key[0]) is str:
+        #     # normal strings can be looked up as a tuple
+        #     gn,tn = key[:2]
+        #     if len(key) == 3:
+        #         label = key[2]
+        # else:
+        #     try:
+        #         gn,tn,label = self._get_edgekey(key)
+        #     except:
+        #         print(key, 'is not a valid key')
+        #         return
+        # 
+        # if label == None:
+        #     if len(self.graph[gn][tn]) == 1:
+        #         return self.graph[gn][tn]['cpd']
+        # 
+        #     return next(iter(self.graph[gn][tn].values()))['cpd']
+        #
+        # return self.edgedata[gn,tn,label]['cpd']
+        return self.edgedata[self._get_edgekey(key)]['cpd']
+        
     def __iter__(self):
         return self.edges("XYPαβ")
 
-    def edges(self, spec='XY'):
+    def edges(self, fmt='XY'):
         """
         Examples:
             M.edges("X,Y,cpd,α,β")
             M.edges("XYLp")
             M.edges(['X', 'Y'])
         """
-        if type(spec) is str:
+        if type(fmt) is str:
             delims = ',; '
             for d in delims:
-                if d in spec:
-                    spec = spec.split(d)
+                if d in fmt:
+                    fmt = fmt.split(d)
                     break
 
         for (Xname, Yname, l), data in self.edgedata.items():
@@ -429,8 +452,8 @@ class PDG:
             # beta = data.get('beta', 1)
             # yield X,Y, data.get('cpd', None), alpha, beta
 
-            yield tuple(lookup.get(s,None) for s in spec) if len(spec) > 1 \
-                else lookup.get(spec[0],None)
+            yield tuple(lookup.get(s,None) for s in fmt) if len(fmt) > 1 \
+                else lookup.get(fmt[0],None)
 
     # semantics 1:
     def matches(self, mu):
