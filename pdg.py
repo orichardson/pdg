@@ -425,6 +425,20 @@ class PDG:
     def __iter__(self):
         return self.edges("XYPαβ")
 
+    def _fmted(self, XnameYnamel, fmt):
+        Xname, Yname, l = XnameYnamel
+        data = self.edgedata[XnameYnamel]
+        X,Y = self.vars[Xname], self.vars[Yname]
+        lookup = dict(src=X,tgt=Y,X=X,Y=Y,Xname=Xname,Yname=Yname, Xn=Xname, Yn =Yname,
+            alpha=1,beta=1,l=l,label=l, L=l)
+        lookup.update(**data)
+        if 'α' not in lookup: lookup['α'] = lookup['alpha']
+        if 'β' not in lookup: lookup['β'] = lookup['beta']
+        lookup['P'] = lookup['p'] =  data.get('cpd',None)
+
+        return tuple(lookup.get(s,None) for s in fmt) if len(fmt) > 1 \
+            else lookup.get(fmt[0],None)
+            
     def edges(self, fmt='XY'):
         """
         Examples:
@@ -439,21 +453,23 @@ class PDG:
                     fmt = fmt.split(d)
                     break
 
-        for (Xname, Yname, l), data in self.edgedata.items():
-            X,Y = self.vars[Xname], self.vars[Yname]
-            lookup = dict(src=X,tgt=Y,X=X,Y=Y,Xname=Xname,Yname=Yname, Xn=Xname, Yn =Yname,
-                alpha=1,beta=1,l=l,label=l, L=l)
-            lookup.update(**data)
-            if 'α' not in lookup: lookup['α'] = lookup['alpha']
-            if 'β' not in lookup: lookup['β'] = lookup['beta']
-            lookup['P'] = lookup['p'] =  data.get('cpd',None)
-
-            # alpha = data.get('alpha', 1)
-            # beta = data.get('beta', 1)
-            # yield X,Y, data.get('cpd', None), alpha, beta
-
-            yield tuple(lookup.get(s,None) for s in fmt) if len(fmt) > 1 \
-                else lookup.get(fmt[0],None)
+        # for (Xname, Yname, l), data in self.edgedata.items():
+        for xnynl in self.edgedata:
+            # X,Y = self.vars[Xname], self.vars[Yname]
+            # lookup = dict(src=X,tgt=Y,X=X,Y=Y,Xname=Xname,Yname=Yname, Xn=Xname, Yn =Yname,
+            #     alpha=1,beta=1,l=l,label=l, L=l)
+            # lookup.update(**data)
+            # if 'α' not in lookup: lookup['α'] = lookup['alpha']
+            # if 'β' not in lookup: lookup['β'] = lookup['beta']
+            # lookup['P'] = lookup['p'] =  data.get('cpd',None)
+            # 
+            # # alpha = data.get('alpha', 1)
+            # # beta = data.get('beta', 1)
+            # # yield X,Y, data.get('cpd', None), alpha, beta
+            # 
+            # yield tuple(lookup.get(s,None) for s in fmt) if len(fmt) > 1 \
+            #     else lookup.get(fmt[0],None)
+            yield self._fmted(xnynl, fmt)
 
     # semantics 1:
     def matches(self, mu):
@@ -545,7 +561,7 @@ class PDG:
     
     def _torch_opt_inc(self, gamma=None,    
             extraTemp = 1E-3, iters=350, 
-            ret_losses:bool = True,
+            ret_losses:bool = False,
             ret_iterates:bool = False,
             representation:str = 'simplex', # or dist or softmax
             constraint_penalty = 1,
@@ -1017,15 +1033,20 @@ class PDG:
         d.data /= d.data.sum()
         return d
 
-    def iter_GS_beta(self, max_iters=600, tol=1E-30, store_iters=False, repr='atomic') -> RJD:
+    def iter_GS_beta(self, 
+            max_iters=600, tol=1E-30, 
+            recalibrate=False,
+            store_iters=False, repr='atomic') -> RJD:
         dist = self.genΔ(RJD.unif, repr)
         iters = [ np.copy(dist.data) ]
         totalβ = sum(β for β in self.edges("β"))
+        
+        τ = self.careful_cpd_transform if recalibrate else self.GS_step 
 
         for it in range(max_iters):
             nextdist = np.zeros(dist.data.shape)
             for X,Y,cpd,β in self.edges("XYPβ"):
-                nextdist += (β / totalβ) * self.GS_step(dist, (X,Y,cpd))
+                nextdist += (β / totalβ) * τ(dist, (X,Y,cpd))
 
             change = np.sum((dist.data - nextdist) ** 2 )
             dist.data = nextdist
@@ -1044,18 +1065,28 @@ class PDG:
 
     def iter_GS_ordered(self, ordered_edges=None, 
             max_iters: Number = 200,  tol=1E-30, 
+            recalibrate=False,
             store_iters=False, repr="atomic") -> RJD:
         
         if ordered_edges is None:
-            ordered_edges = list(self.edges("XYP"))
-
-
+            ordered_XYP = list(self.edges("XYP"))
+        elif type(ordered_edges) is list:
+            ordered_XYP = []
+            for spec in ordered_edges:
+                Xn,Yn,l = self._get_edgekey(spec)
+                dat = self.edgedata[Xn,Yn,l]
+                ordered_XYP.append((self.vars[Xn],self.vars[Yn],dat['cpd']))
+            # The below should be the same.
+            # ordered_XYP = [self._fmted(self._get_edgekey(spec), ['X','Y','P']) for spec in ordered_edges]
+    
         dist = self.genΔ(RJD.unif, repr)
         iters = [ np.copy(dist.data) ]
 
+        τ = self.careful_cpd_transform if recalibrate else self.GS_step 
+        
         for it in range(max_iters):
-            for XYp in ordered_edges:
-                dist.data = self.GS_step(dist, XYp)
+            for XYp in ordered_XYP:
+                dist.data = τ(dist, XYp)
 
             change = ((dist.data - iters[-1]) ** 2 ).sum()
 
@@ -1083,6 +1114,76 @@ class PDG:
                 # Get the cpd from all variables that do not share a name with target.
         return dist.prob_matrix(*not_target,X) * dist.broadcast(cpd)
 
+    def careful_cpd_transform(self, dist : RJD, XYP) -> RJD:
+        X,Y,cpd = XYP
+        return dist.broadcast(cpd) * dist.data * dist.prob_matrix(X) / dist.prob_matrix(X,Y)
+        
+    def mk_edge_transformer(self, spec, reweight=True):
+        X,Y,cpd = self._fmted(self._get_edgekey(spec), ['X','Y','P'])
+        
+        if reweight:
+            def apply(dist):
+                return RJD(dist.data * dist.broadcast(cpd) / dist.prob_matrix(Y|X), dist.varlist)
+                # return RJD(dist.data * dist.prob_matrix(X) * dist.broadcast(cpd) / dist.prob_matrix(X,Y), dist.varlist)
+
+        else:
+            not_target = list(v for v in self.rawvarlist if
+                len(set(v.name.split('×')) & set(Y.name.split("×"))) == 0)
+            
+            def apply(dist):
+                return RJD(dist.prob_matrix(*not_target,X) * dist.broadcast(cpd), dist.varlist)
+
+        return apply
+        
+        
+    def MCMC(self, iters=200):
+        import random
+        # import pandsas as pd
+        
+        history = []
+        # history_df = pd.DataFrame(columns = [X.name for X in self.atomic_vars])
+        try:
+            sample = {X.name : X.default_value for X in self.atomic_vars }
+        except:
+            sample = {X.name : next(iter(X)) for X in self.atomic_vars }
+        
+        totalβ = 0 # sum(β for β in self.edges("β"))
+        bkpts = []
+        for i,(β,l)  in enumerate(self.edges("βl")):
+            totalβ += β
+            bkpts.append( (totalβ, l) )
+            
+        def draw_edge_by_beta():
+            u = np.random.rand() * totalβ
+            for (b, l) in bkpts:
+                if u < b:
+                    return l
+        
+        for it in range (iters):
+            l = draw_edge_by_beta()
+            X,Y,cpd = self._fmted(self._get_edgekey(l), ["X", "Y", "P"])
+
+            newy = cpd.sample(sample[X.name])
+            
+            # TODO this is very inefficient  
+            for h in history: 
+                if h[X.name] == sample[X.name] and h[Y.name] == newy:
+                    newsample = { x : v  for x,v in h.items() }
+                    random.shuffle(history) 
+                    break
+            else:
+                newsample = { x : v  for x,v in sample.items() }
+                newsample[Y.name] = newy
+            
+            # newsample = { x : v  for x,v in sample.items() }
+            # newsample[Y.name] = 
+            
+            yield newsample
+            history.append(sample)
+            sample = newsample
+            
+        
+            
 
 
     ############# Utilities ##############

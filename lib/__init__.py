@@ -25,7 +25,8 @@ def _ns_save(v : Var):
     _loc[v.name] = v
 
 for (N,p) in zip('ABCD', primes()) :
-    _ns_save( Var([N.lower()+str(i) for i in range(p)], name=N) )
+    # _ns_save( Var([N.lower()+str(i) for i in range(p)], name=N, default_value=N.lower()+str('0')) )
+    _ns_save(Var.alph(N, p))
 
 for c in range(ord('A'), ord('L')):
     for n in range(2,3):

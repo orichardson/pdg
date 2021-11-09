@@ -170,6 +170,12 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
     def renormalize(self):
         self /= np.sum(self, axis=1)[:, None]
         return self
+        
+    def sample(self, xval):
+        u = np.random.rand()
+        return (u < self.loc[xval].cumsum()).idxmax()
+        
+        
 
 ## useless helper methods to either use dict values or list.
 def _definitely_a_list( somedata ):
