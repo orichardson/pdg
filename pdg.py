@@ -3,6 +3,8 @@
 
 # import pandas as pd
 import sys # for printing.
+import warnings
+import random
 # from random import random
 import numpy as np
 import networkx as nx
@@ -927,7 +929,7 @@ class PDG:
             idef = idef/np.log(2) -  p.H(...)
             return idef 
         
-        else: # we can do the interesting thing
+        else: # we can do the interesting thing (which is slower and maybe stupider)
             if p._torch:
                 p = RJD(p.data.detach().numpy(), p.varlist, False)
                 Prp = p.prob_matrix
@@ -999,7 +1001,7 @@ class PDG:
         pass
 
 
-    def genΔ(self, kind=RJD.random, repr="atomic"):
+    def genΔ(self, kind=RJD.random, repr="atomic"):        
         d = kind(self.getvarlist(repr))
         return d
 
@@ -1018,30 +1020,40 @@ class PDG:
             M += l, distrib.conditional_marginal(Y | X)
         return M
 
-    def factor_product(self, repr="atomic") -> RJD:
+    def factor_product(self, repr="atomic", return_Z=False) -> RJD:
         """ pretend the PDG is a factor graph, with weights θ := β """ 
         # start with uniform
         # d = RJD.unif(self.atomic_vars)
 
         d = self.genΔ(RJD.unif, repr)
+        # The above already has divided by |d|, messing up the computation
+        # of the normalization constant.  
+        
         for X,Y,cpt,β in self.edges("XYPβ"):
             if cpt is not None:
                 #hopefully the broadcast works...
                 d.data *= np.nan_to_num( d.broadcast(cpt) ** β, nan=1)
             # print(d.data)
 
-        d.data /= d.data.sum()
-        return d
+        Z = d.data.sum()
+        d.data /= Z
+        return (d,Z*d.data.size) if return_Z else d
 
     def iter_GS_beta(self, 
             max_iters=600, tol=1E-30, 
-            recalibrate=False,
-            store_iters=False, repr='atomic') -> RJD:
-        dist = self.genΔ(RJD.unif, repr)
+            counterfactual_recalibration=False,
+            init = None,
+            store_iters=False, 
+            repr='atomic') -> RJD:
+        
+        if init == None: init = RJD.unif
+        if isinstance(init, RJD): dist = init
+        else: dist = self.genΔ(init, repr)
+        
         iters = [ np.copy(dist.data) ]
         totalβ = sum(β for β in self.edges("β"))
         
-        τ = self.careful_cpd_transform if recalibrate else self.GS_step 
+        τ = self.careful_cpd_transform if counterfactual_recalibration else self.GS_step 
 
         for it in range(max_iters):
             nextdist = np.zeros(dist.data.shape)
@@ -1058,31 +1070,43 @@ class PDG:
             if change < tol:
                 break
         else:
-            print('hit max iters, still changing at rate ', change, ' (tol = %f)'%tol)
+            warnings.warn('hit max iters but dist still changing; last change of size {:.2e} (tol = {:.2e})'.format(change,tol))
 
                 # if change == 0: break
         return (dist, iters) if store_iters else dist
 
-    def iter_GS_ordered(self, ordered_edges=None, 
+    def iter_GS_ordered(self, edge_order=None, 
             max_iters: Number = 200,  tol=1E-30, 
-            recalibrate=False,
-            store_iters=False, repr="atomic") -> RJD:
+            counterfactual_recalibration=False,
+            init = None,
+            store_iters=False, 
+            repr="atomic") -> RJD:
+        """
+        Does the steps of iterative (pseudo-)(ordered-)Gibbs sampling, 
+        but with a full distribution in
         
-        if ordered_edges is None:
-            ordered_XYP = list(self.edges("XYP"))
-        elif type(ordered_edges) is list:
+        :param init: the joint distribution we initialize to. Uniform if None.
+        """
+        
+        # First, sort out ordered_XYP list from the (supplied?) order
+        if type(edge_order) is list:
             ordered_XYP = []
-            for spec in ordered_edges:
+            for spec in edge_order:
                 Xn,Yn,l = self._get_edgekey(spec)
                 dat = self.edgedata[Xn,Yn,l]
                 ordered_XYP.append((self.vars[Xn],self.vars[Yn],dat['cpd']))
             # The below should be the same.
             # ordered_XYP = [self._fmted(self._get_edgekey(spec), ['X','Y','P']) for spec in ordered_edges]
+        elif edge_order is None or edge_order == "shuffle":
+            ordered_XYP = list(self.edges("XYP"))
     
-        dist = self.genΔ(RJD.unif, repr)
+        if init == None: init = RJD.unif
+        if isinstance(init, RJD): dist = init
+        else: dist = self.genΔ(init, repr)
+            
         iters = [ np.copy(dist.data) ]
 
-        τ = self.careful_cpd_transform if recalibrate else self.GS_step 
+        τ = self.careful_cpd_transform if counterfactual_recalibration else self.GS_step 
         
         for it in range(max_iters):
             for XYp in ordered_XYP:
@@ -1097,9 +1121,11 @@ class PDG:
 
 
             if change < tol: break
+            if edge_order == 'shuffle':
+                random.shuffle(ordered_XYP)
         else:
-            print('hit max iters, still changing at rate ', change, ' (tol = %f)'%tol)
-
+            warnings.warn('hit max iters but dist still changing; last change of size {:.2e} (tol = {:.2e})'.format(change,tol))
+        
         # return self.iterGS(init=self.genΔ(RJD.unif, repr), cpdgen=cpdgen)
         return (dist, iters) if store_iters else dist
 
@@ -1136,12 +1162,34 @@ class PDG:
         return apply
         
         
+    def random_consistent_dists(self, how_many,
+                transform_iters=1000,
+                ret_initializations=False
+            ):
+        """
+        Gives random distributions consistent with the PDG,
+        by repeatedly running the consistency-improving transformer on it.
+        """
+        dists = []
+        for i in range(how_many):
+            μ0 = self.genΔ(RJD.random)
+            μ = self.iter_GS_ordered(edge_order="shuffle", 
+                max_iters=transform_iters,
+                init=μ0,
+                counterfactual_recalibration=True,
+                # store_iters=False
+                )
+            dists.append(μ)
+        
+        return dists
+        
+        
     def MCMC(self, iters=200):
         import random
-        # import pandsas as pd
+        from pandas import DataFrame
         
-        history = []
-        # history_df = pd.DataFrame(columns = [X.name for X in self.atomic_vars])
+        # history = []
+        history_df = DataFrame(columns = [X.name for X in self.atomic_vars])
         try:
             sample = {X.name : X.default_value for X in self.atomic_vars }
         except:
@@ -1162,24 +1210,29 @@ class PDG:
         for it in range (iters):
             l = draw_edge_by_beta()
             X,Y,cpd = self._fmted(self._get_edgekey(l), ["X", "Y", "P"])
+            Xn, Yn = X.name, Y.name
 
-            newy = cpd.sample(sample[X.name])
+            newy = cpd.sample(sample[Xn])
             
-            # TODO this is very inefficient  
-            for h in history: 
-                if h[X.name] == sample[X.name] and h[Y.name] == newy:
-                    newsample = { x : v  for x,v in h.items() }
-                    random.shuffle(history) 
-                    break
+            # FIXME this is very inefficient  
+            # for h in history: 
+            #     if h[X.name] == sample[X.name] and h[Y.name] == newy:
+            #         newsample = { x : v  for x,v in h.items() }
+            #         random.shuffle(history) 
+            #         break
+            
+            # history_df[X.name] == sample[X.name] & history_df
+            rows = history_df[(history_df[Xn]==sample[Xn]) & (history_df[Yn]==newy)]
+            if not rows.empty:
+                newsample = rows.sample().iloc[0].to_dict()
             else:
                 newsample = { x : v  for x,v in sample.items() }
                 newsample[Y.name] = newy
             
-            # newsample = { x : v  for x,v in sample.items() }
-            # newsample[Y.name] = 
-            
+        
             yield newsample
-            history.append(sample)
+            # history.append(sample)
+            history_df = history_df.append(sample,ignore_index=True)
             sample = newsample
             
         

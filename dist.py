@@ -208,7 +208,11 @@ class RawJointDist(Dist):
         self._query_mode = "dataframe" # query mode can either be
             # dataframe or ndarray
             
-
+    def clone(self):
+        return RawJointDist(
+            self.data.clone() if self._torch else self.data.copy(),
+            self.varlist, self._torch)
+        
     def npify(self):
         data = self.data.detach().numpy() if self._torch else self.data
         return RawJointDist(data, self.varlist, False)    

@@ -24,10 +24,10 @@ _loc = locals()
 def _ns_save(v : Var):
     _loc[v.name] = v
 
-for (N,p) in zip('ABCD', primes()) :
+for (N,p) in zip('ABCDE', primes()) :
     # _ns_save( Var([N.lower()+str(i) for i in range(p)], name=N, default_value=N.lower()+str('0')) )
     _ns_save(Var.alph(N, p))
 
 for c in range(ord('A'), ord('L')):
-    for n in range(2,3):
+    for n in range(2,4): # [2,4) = [2, 3]
         _ns_save (Var.alph(chr(c)+str(n), n))

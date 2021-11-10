@@ -5,3 +5,10 @@ Probabilistic Dependency Graphs (PDGs) are a powerful class of graphical model, 
 
 For more information, see the AAAI paper, available on [arXiv](https://arxiv.org/abs/2012.10800),
 and the [github page](https://orichardson.github.io/pdg/) corresponding to this repository.
+
+
+
+<!-- 
+# Using the Package
+
+-->

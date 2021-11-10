@@ -69,6 +69,8 @@ def pca_view(*unnamedtraces,
         artistname.append((art,n))
 
     ax.legend(*zip(*artistname))
+    if 'pca' in locals():
+        return pca
 
 
 
