@@ -12,6 +12,10 @@ import networkx as nx
 import collections
 from numbers import Number
 
+
+from operator import mul
+from functools import reduce
+
 # import utils
 from .utils import dictwo
 from .rv import Variable, ConditionRequest, Unit
@@ -473,6 +477,44 @@ class PDG:
             #     else lookup.get(fmt[0],None)
             yield self._fmted(xnynl, fmt)
 
+    def genΔ(self, kind=RJD.random, repr="atomic"):        
+        d = kind(self.getvarlist(repr))
+        return d
+
+    ##### OTHERS ##########
+    def make_edge_mask(self, distrib):
+        """returns a PDG with the same shape as this one,
+        but with the given distribution's marginals"""
+        M = PDG()
+
+        for name,V in self.vars.items():
+            M += name, V
+            # print(name, self.vars[name].structure, M.vars[name].structure)
+
+        for X,Y, l in self.edges('XYl'):
+            # print('edge  ', X.name,'->', Y.name,beta, self.edgedata)
+            M += l, distrib.conditional_marginal(Y | X)
+        return M
+
+    def factor_product(self, repr="atomic", return_Z=False) -> RJD:
+        """ pretend the PDG is a factor graph, with weights θ := β """ 
+        # start with uniform
+        # d = RJD.unif(self.atomic_vars)
+
+        d = self.genΔ(RJD.unif, repr)
+        # The above already has divided by |d|, messing up the computation
+        # of the normalization constant.  
+        
+        for X,Y,cpt,β in self.edges("XYPβ"):
+            if cpt is not None:
+                #hopefully the broadcast works...
+                d.data *= np.nan_to_num( d.broadcast(cpt) ** β, nan=1)
+            # print(d.data)
+
+        Z = d.data.sum()
+        d.data /= Z
+        return (d,Z*d.data.size) if return_Z else d
+
     # semantics 1:
     def matches(self, mu):
         for X,Y, cpd in self.edges("XYP"):
@@ -481,6 +523,9 @@ class PDG:
                 return False
 
         return True
+
+########## INFERENCE ALGORITHMS ########
+
 
     def torch_score_alt(self, μ : RJD, γ):
         """ The simpler, linear version of semantics for small gamma """
@@ -649,7 +694,7 @@ class PDG:
             ozr.zero_grad(set_to_none=True)
             μ.data, penalty = todistrib(μdata)
             loss = self.torch_score(μ, γ)
-            if constraint_penalty != 0: loss += loss + penalty
+            if constraint_penalty != 0: loss += penalty
             loss.backward()
             return loss
 
@@ -997,47 +1042,9 @@ class PDG:
         # TODO: figure out how to compute this. Gradient descent, probably. Because convex.
         # TODO: another possibly nice thing: a way of testing if this is truly the minimum distribution. Will require some careful thought and new theory.
         
-    def optimize_score_torch(self, gamma, store_iters=False, **solver_kwarg):
-        pass
+    # def optimize_score_torch(self, gamma, store_iters=False, **solver_kwarg):
+    #     pass
 
-
-    def genΔ(self, kind=RJD.random, repr="atomic"):        
-        d = kind(self.getvarlist(repr))
-        return d
-
-    ##### OTHERS ##########
-    def make_edge_mask(self, distrib):
-        """returns a PDG with the same shape as this one,
-        but with the given distribution's marginals"""
-        M = PDG()
-
-        for name,V in self.vars.items():
-            M += name, V
-            # print(name, self.vars[name].structure, M.vars[name].structure)
-
-        for X,Y, l in self.edges('XYl'):
-            # print('edge  ', X.name,'->', Y.name,beta, self.edgedata)
-            M += l, distrib.conditional_marginal(Y | X)
-        return M
-
-    def factor_product(self, repr="atomic", return_Z=False) -> RJD:
-        """ pretend the PDG is a factor graph, with weights θ := β """ 
-        # start with uniform
-        # d = RJD.unif(self.atomic_vars)
-
-        d = self.genΔ(RJD.unif, repr)
-        # The above already has divided by |d|, messing up the computation
-        # of the normalization constant.  
-        
-        for X,Y,cpt,β in self.edges("XYPβ"):
-            if cpt is not None:
-                #hopefully the broadcast works...
-                d.data *= np.nan_to_num( d.broadcast(cpt) ** β, nan=1)
-            # print(d.data)
-
-        Z = d.data.sum()
-        d.data /= Z
-        return (d,Z*d.data.size) if return_Z else d
 
     def iter_GS_beta(self, 
             max_iters=600, tol=1E-30, 
@@ -1162,27 +1169,6 @@ class PDG:
         return apply
         
         
-    def random_consistent_dists(self, how_many,
-                transform_iters=1000,
-                ret_initializations=False
-            ):
-        """
-        Gives random distributions consistent with the PDG,
-        by repeatedly running the consistency-improving transformer on it.
-        """
-        dists = []
-        for i in range(how_many):
-            μ0 = self.genΔ(RJD.random)
-            μ = self.iter_GS_ordered(edge_order="shuffle", 
-                max_iters=transform_iters,
-                init=μ0,
-                counterfactual_recalibration=True,
-                # store_iters=False
-                )
-            dists.append(μ)
-        
-        return dists
-        
         
     def MCMC(self, iters=200):
         import random
@@ -1236,10 +1222,83 @@ class PDG:
             sample = newsample
             
         
+    def optimize_via_FG_cover(self, γ=0, init=None, iters=1000) -> RJD:
+        """
+        Cover PDG with factors; 
+        """
+        HE = self.hypergraph_object[1]
+        μ = self.genΔ().torchify(True) #init
+        energies = [
+            torch.tensor(-np.log(μ.broadcast(self[k])),
+                    dtype=torch.double,requires_grad=True) 
+                for k in HE
+            ]
+        # factors = [
+        #     torch.tensor(μ.broadcast(self[k]),
+        #             dtype=torch.double,requires_grad=True) 
+        #         for k in HE
+        #     ]
             
+        # ozr = torch.optim.Adam(factors,lr=5E-4)
+        ozr = torch.optim.Adam(energies,lr=2E-3)
+        numdig = str(len(str(iters)))
+        for it in range(iters):
+            ozr.zero_grad(set_to_none=True)
+            # pf = torch.clip(reduce(mul, factors), min=0.)
+            pf = torch.exp(-reduce(torch.add, energies))
+            μ.data = pf / pf.sum()
+            # μ.data = factors[0]
+            # print(μ.data.shape)
+            loss = self.torch_score(μ, γ)
+            loss.backward()
+            ozr.step()
+            
+            
+            l = loss.detach().item()
+            extrastr=""
+            # went_up = l > losses[-1]            
+    
+            if it%(1+iters//100) == 0:# or went_up: # Nice printing.
+                sys.stdout.write(
+                    ('\r[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}; \t graient magnitude: {gm:.3e} \t ' + extrastr)\
+                        .format(ep=it, ls=l, lr=2E-3, its=iters, gm=torch.norm(μ.data)) )
+                sys.stdout.flush()    
+            
+        print(loss.detach().item())
+        
+        # μ.data = μ.data.detach()
+        return μ
+        
+        
+
+        # factors = [ torch.zeros(, requires_grad=True) for he in HE]
+        
+        
+        
 
 
     ############# Utilities ##############
+    def random_consistent_dists(self, how_many,
+                transform_iters=1000,
+                ret_initializations=False
+            ):
+        """
+        Gives random distributions consistent with the PDG,
+        by repeatedly running the consistency-improving transformer on it.
+        """
+        dists = []
+        for i in range(how_many):
+            μ0 = self.genΔ(RJD.random)
+            μ = self.iter_GS_ordered(edge_order="shuffle", 
+                max_iters=transform_iters,
+                init=μ0,
+                counterfactual_recalibration=True,
+                # store_iters=False
+                )
+            dists.append(μ)
+        
+        return dists
+        
 
     def standard_library(self, repr='atomic'):
         from .store import TensorLibrary
