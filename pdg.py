@@ -19,6 +19,7 @@ from functools import reduce
 # import utils
 from .utils import dictwo
 from .rv import Variable, ConditionRequest, Unit
+from .fg import FactorGraph
 from .dist import RawJointDist as RJD, CPT #, Dist, CDist,
 from .dist import z_mult, zz1_div
 
@@ -231,6 +232,7 @@ class PDG:
     def set_beta(self, edge_spec, β):
         self.edgedata[self._get_edgekey(edge_spec)]['alpha'] = β
         
+
     def update_all_weights(self, a=None, b=None):
         for xyl in self.edges('Xn,Yn,l'):
             if a is not None:
@@ -514,6 +516,21 @@ class PDG:
         Z = d.data.sum()
         d.data /= Z
         return (d,Z*d.data.size) if return_Z else d
+    
+
+    def to_FG(self, via='β') -> FactorGraph:
+        """
+        TODO: refactor so that I don't need to create a full RJD to do broadasting.
+        """
+        broadcast = self.genΔ().broadcast
+        factors = []
+        for X,Y,cpt,power in self.edges("XYP"+via):
+            if cpt is not None:
+                factors.append(np.nan_to_num( broadcast(cpt) ** power, nan=1))
+        
+        return FactorGraph(factors, self.varlist)
+        
+    
 
     # semantics 1:
     def matches(self, mu):
@@ -605,6 +622,44 @@ class PDG:
         
         return loss
         # Returns log base 2 by default, so base is correct already
+    
+    def approx_score(self, F : FactorGraph, γ)
+        loss = torch.tensor(0.)
+        for X,Y,cpd_df,α,β in self.edges("XYPαβ"):
+            muxy = μ.prob_matrix(X, Y)
+            muy_x = μ.prob_matrix(Y | X)
+
+            logcond_info = - torch.log(twhere(muxy==0, 1., muy_x))
+            # print(muxy*logcond_info)
+            
+            if cpd_df is None:
+                logliklihood = 0.
+                logcond_claimed = 0.
+            else:
+                cpt = torch.tensor(μ.broadcast(cpd_df), requires_grad=False)
+                claims = torch.isfinite(cpt)
+
+                logliklihood = twhere(claims, -torch.log(twhere(cpt==0, LOGZERO, cpt)), 0.)
+                logcond_claimed = twhere(claims, logcond_info, 0.)
+                # logliklihood =  -torch.log(cpt)
+                # logcond_claimed = -torch.log(muy_x)
+        
+            # print('cpt: ', cpt, '\nμ_{Y|X}', muy_x)
+            # print('log ratio: ', muxy * (logliklihood - logcond_claimed))
+            # print('... that sums to ', (muxy * (logliklihood - logcond_claimed)).sum())
+
+            loss += β * zmul( muxy, (logliklihood-logcond_claimed)).sum()
+            loss += α*γ* zmul(muxy , logcond_info).sum() # /plus/ E_mu ( - log mu)
+            # print('... loss now ', loss/np.log(2))
+
+        loss /= np.log(2)
+        loss -= γ * μ.H(...)
+        # print('after entropy')
+        # loss -= γ * zlog( μ )
+        
+        return loss
+
+    
     
     def _torch_opt_inc(self, gamma=None,    
             extraTemp = 1E-3, iters=350, 
@@ -1225,6 +1280,7 @@ class PDG:
     def optimize_via_FG_cover(self, γ=0, init=None, iters=1000) -> RJD:
         """
         Cover PDG with factors; 
+        #TODO : make init do something
         """
         HE = self.hypergraph_object[1]
         μ = self.genΔ().torchify(True) #init
@@ -1269,11 +1325,58 @@ class PDG:
         # μ.data = μ.data.detach()
         return μ
         
-        
 
         # factors = [ torch.zeros(, requires_grad=True) for he in HE]
         
         
+    def optimize_via_FGs(self, γ=0, init=None, iters=1000) -> RJD:
+        """
+        Cover PDG with factors;
+
+        #TODO : remove the joint distribution.
+        """
+        HE = self.hypergraph_object[1]
+        μ = self.genΔ().torchify(True) #init
+        energies = [
+            torch.tensor(-np.log(μ.broadcast(self[k])),
+                    dtype=torch.double,requires_grad=True) 
+                for k in HE
+            ]
+        # factors = [
+        #     torch.tensor(μ.broadcast(self[k]),
+        #             dtype=torch.double,requires_grad=True) 
+        #         for k in HE
+        #     ]
+            
+        # ozr = torch.optim.Adam(factors,lr=5E-4)
+        ozr = torch.optim.Adam(energies,lr=2E-3)
+        numdig = str(len(str(iters)))
+        for it in range(iters):
+            ozr.zero_grad(set_to_none=True)
+            # pf = torch.clip(reduce(mul, factors), min=0.)
+            pf = torch.exp(-reduce(torch.add, energies))
+            μ.data = pf / pf.sum()
+            # μ.data = factors[0]
+            # print(μ.data.shape)
+            loss = self.torch_score(μ, γ)
+            loss.backward()
+            ozr.step()
+            
+            
+            l = loss.detach().item()
+            extrastr=""
+            # went_up = l > losses[-1]            
+    
+            if it%(1+iters//100) == 0:# or went_up: # Nice printing.
+                sys.stdout.write(
+                    ('\r[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}; \t graient magnitude: {gm:.3e} \t ' + extrastr)\
+                        .format(ep=it, ls=l, lr=2E-3, its=iters, gm=torch.norm(μ.data)) )
+                sys.stdout.flush()    
+            
+        print(loss.detach().item())
+        
+        # μ.data = μ.data.detach()
+        return μ
         
 
 

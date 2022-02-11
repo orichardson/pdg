@@ -264,7 +264,8 @@ class RawJointDist(Dist):
 
 
     def __repr__(self):
-        varstrs = [v.name+"%d"%len(v) for v in self.varlist]
+        # varstrs = [v.name+"%d"%len(v) for v in self.varlist]
+        varstrs = [v.name for v in self.varlist]
         # return f"RJD Δ[{';'.join(varstrs)}]--{np.prod(self.shape)} params"
         # for python 3.5, with no string interpolation
         if self._torch:
