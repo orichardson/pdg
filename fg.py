@@ -1,5 +1,6 @@
 from operator import mul
 from functools import reduce
+import numpy as np
 
 from .rv import Variable as Var
 from .dist import CPT, RawJointDist as RJD
@@ -25,7 +26,7 @@ class FactorGraph:
         self._varlist = varlist
         self.factors = factors
         
-        if varlist is 'generate':
+        if varlist == 'generate':
             self._varlist = canonical_varlist(factors)
         
     @property
@@ -54,16 +55,21 @@ class FactorGraph:
         return reduce(mul, self.factors).sum()
         
     
-    def gibbs_marginal_estimate(self, vars,given=None, iters=1):
-        sample = {v.name : np.random.choice(v)
-            for v in self.vars}
+    # def neighbors(vars):
+    #     return 
+        
+    
+    def gibbs_marginal_estimate(self, vars, init_sample=None, iters=1):
+        sample = init_sample if init_sample is not None \
+            else {v.name : np.random.choice(v) for v in self.vars}
         
         for it in range(iters):
-            for v in self.vars:
+            for v in self.vars: # go over ALL variables;
                 # sample from product of neighbor functions
+                pass
                 
                 
-        ## minibatch?
+        # esimate Pr(vars)    
                 
             
         

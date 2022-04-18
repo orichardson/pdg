@@ -623,11 +623,16 @@ class PDG:
         return loss
         # Returns log base 2 by default, so base is correct already
     
-    def approx_score(self, F : FactorGraph, γ)
+    def approx_score(self, F : FactorGraph, γ):
+        # TODO The below is very bad. Be better.
+        broadcast =self.genΔ(kind=RJD.unif).broadcast
+        
         loss = torch.tensor(0.)
         for X,Y,cpd_df,α,β in self.edges("XYPαβ"):
-            muxy = μ.prob_matrix(X, Y)
-            muy_x = μ.prob_matrix(Y | X)
+            # muxy = μ.prob_matrix(X, Y)
+            muxy = F.gibbs_marginal_estimate([X,Y])
+            # muy_x = μ.prob_matrix(Y | X)
+            muy_x = muxy / muxy.sum(axis= self.varlist.index(X)) # TODO be more efficient.
 
             logcond_info = - torch.log(twhere(muxy==0, 1., muy_x))
             # print(muxy*logcond_info)
@@ -636,7 +641,8 @@ class PDG:
                 logliklihood = 0.
                 logcond_claimed = 0.
             else:
-                cpt = torch.tensor(μ.broadcast(cpd_df), requires_grad=False)
+                
+                cpt = torch.tensor(broadcast(cpd_df), requires_grad=False)
                 claims = torch.isfinite(cpt)
 
                 logliklihood = twhere(claims, -torch.log(twhere(cpt==0, LOGZERO, cpt)), 0.)
@@ -653,7 +659,9 @@ class PDG:
             # print('... loss now ', loss/np.log(2))
 
         loss /= np.log(2)
-        loss -= γ * μ.H(...)
+        
+        # TOOD: implement approx_entropy.
+        loss -= γ * F.approx_entropy()
         # print('after entropy')
         # loss -= γ * zlog( μ )
         
@@ -1226,7 +1234,7 @@ class PDG:
         
         
     def MCMC(self, iters=200):
-        import random
+        # import random
         from pandas import DataFrame
         
         # history = []
