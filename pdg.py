@@ -447,6 +447,17 @@ class PDG:
         return tuple(lookup.get(s,None) for s in fmt) if len(fmt) > 1 \
             else lookup.get(fmt[0],None)
             
+            
+    ### Next two methods _idx, _idxs, are stolen from dist. Still useful here.
+    ### # TODO: make them point to the same code 
+    def _idxs(self, *varis, multi=False):
+        idxs = []
+        for V in varis:
+            if V in self.varlist and (multi or V not in idxs):
+                idxs.append(self.varlist.index(V))
+            elif '×' in V.name:
+                idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])        
+        
     def edges(self, fmt='XY'):
         """
         Examples:
