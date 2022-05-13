@@ -40,7 +40,6 @@ var hypergraph = {
 
 let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
 
-		
 
 const initw = 60, inith = 40;
 
@@ -55,6 +54,21 @@ $(function() {
 	}
 	resizeCanvas()
 	window.addEventListener('resize', resizeCanvas, false);
+	
+	
+	let mode = $('#drag-mode-toolbar button.active').attr('data-mode');
+	console.log(mode);
+	
+	$('#drag-mode-toolbar button').on('click', function() {
+		$('#drag-mode-toolbar button').removeClass("active");
+		$(this).addClass('active');
+		mode = $(this).attr('data-mode');
+		console.log('new mode: ', mode);
+	});
+
+
+	var select_rect_end,  select_rect_start;
+	
 
 
 	context = canvas.getContext("2d");
@@ -84,6 +98,7 @@ $(function() {
 	// hlinks = ED.map(
 
 
+
 	nodedata = svg.selectAll(".node").data(nodes);
 	gnode = nodedata.enter().append("g").classed("node", true);
 	gnode.append("rect")
@@ -94,10 +109,10 @@ $(function() {
 	gnode.append("text").text(n => n.id);
 	gnode.filter( n => ! n.display).attr('display', 'none')
 
-	//##  Next, draw PDG.
+	//##  Next, draw PDG + Do Updating. 
 	function ontick() {
 		context.clearRect(0, 0, canvas.width, canvas.height);
-
+		context.save();
 
 		
 		for (label in ED) {
@@ -208,7 +223,22 @@ $(function() {
 		// 	context.arc(n.x, n.y, 3, 0, 2 * Math.PI);
 		// });
 		
+		
 		context.globalAlpha = 0.2;
+		// console.log('mode', mode);
+		// Draw Selection Rectangle
+		if( mode == "select" && select_rect_start && select_rect_end ) {
+			// console.log(...corners2xywh(select_rect_start, select_rect_end))
+			// context.save();
+			context.fillStyle="orange";
+			// context.fillRect(select_rect_start.x, select_rect_start.y, select_rect_end.x, select_rect_end.y);
+			// let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
+			context.fillRect(...corners2xywh(select_rect_start, select_rect_end));
+			context.stroke();
+			// context.restore();
+		}
+		
+		/// Draw the invisible product nodes + make sure no node goes off screen.
 		fullN.forEach(function(nn) {
 			n = lookup[nn];			
 			//updating
@@ -221,9 +251,10 @@ $(function() {
 				context.stroke();
 			}
 		});
-		context.globalAlpha = 1;
+		// context.globalAlpha = 1;
+		context.restore();
 
-		context.save();
+		// context.save(); // this doesn't save the image. It saves the global context.
 		// console.log(canvas.width, canvas.height);
 
 
@@ -239,6 +270,7 @@ $(function() {
 
 
 	}
+
 
 
 	links = Object.entries(ED).map(function([label,[src,tgt]],i) {
@@ -264,15 +296,25 @@ $(function() {
 				.strength(0.5).iterations(5))
 		.on("tick", ontick)
 		.stop();
-	simulation.alphaDecay(0.01);
+	simulation.alphaDecay(0.05);
 		
 	setTimeout(function(){
 		for (const node of nodes) {
 			node.x = node.x * 10.8 + canvas.width/2;
 			node.y = node.y * 10.8 + canvas.height/2;
 		} ontick();} , 1);
-	setTimeout(() => {simulation.restart(); }, 100);
+	setTimeout(() => { simulation.restart(); }, 100);
 
+
+	function pick(pt) {
+		for(let objn of nodes) {
+			adx = Math.abs(objn.x - pt.x);
+			ady = Math.abs(objn.y - pt.y);
+
+			if(adx <  objn.w/2 && ady < objn.h/2)
+				return objn;
+		}
+	}
 
 	d3.select(canvas)
 	    .call(d3.drag()
@@ -280,43 +322,93 @@ $(function() {
 	        .subject(function(event) {
 						// for(let n of N) {
 							// let loon = lookup[n];
-					for(let objn of nodes) {
-						adx = Math.abs(objn.x - event.x);
-						ady = Math.abs(objn.y - event.y);
-
-						if(adx <  objn.w/2 && ady < objn.h/2)
-							return objn;
-					}
+					return pick(event);
 				})
 	        .on("start", dragstarted)
 	        .on("drag", dragged)
 	        .on("end", dragended)
 		);
 		
-	canvas.addEventListener('click', function(event) {
-		
+	
+	// console.log("working? 1");
+	// function canvas_clicked(event) {
+	// 	console.log("hi", event);
+	// 	window.alert(d3.event.ctrlKey || d3.event.metaKey);
+	// }
+	// canvas.on("click", canvas_clicked)
+	// canvas.addEventListener("click", canvas_clicked);
+	
+	canvas.addEventListener("dblclick", function(e) {
+		if(e.ctrlKey || e.metaKey) {
+		}
 	});
+	
+	canvas.addEventListener("click", function(e) {
+		// window.alert(e.ctrlKey || e.metaKey);
+		// ADD NEW NODE
+		// if(e.ctrlKey || e.metaKey) {
+		if(mode == 'move') {
+			
+		}
+		// }
+	});
+	// svg.addEventListener("click", canvas_clicked);
 
 
 	function dragstarted(event) {
-	  if (!event.active) simulation.alphaTarget(0.5).restart();
-	  event.subject.fx = event.subject.x;
-	  event.subject.fy = event.subject.y;
+		if(mode == 'move') {
+			if (!event.active) simulation.alphaTarget(0.5).restart();
+			event.subject.fx = event.subject.x;
+			event.subject.fy = event.subject.y;
+		}
+		else if (mode == 'select') {
+			select_rect_start = vec2(event);
+			ontick();
+		}
 	}
 
 	function dragged(event) {
-	  event.subject.fx = event.x;
-	  event.subject.fy = event.y;
+		if(mode == 'move') {
+			event.subject.fx = event.x;
+			event.subject.fy = event.y;
+		} 
+		else if (mode == 'select') {
+			select_rect_end = vec2(event);
+			ontick();
+		}
 	}
 
 	function dragended(event) {
-	  if (!event.active) simulation.alphaTarget(0);
-	  event.subject.fx = null;
-	  event.subject.fy = null;
+		if(mode == 'move') {
+			if (!event.active) simulation.alphaTarget(0);
+			event.subject.fx = null;
+			event.subject.fy = null;
+		}
+		else if (mode == 'select') {
+			let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
+			let xmax = xmin + w, 
+				ymax = ymin + h;
+
+			for(let objn of nodes) {
+				if (objn.x >= xmin && objn.x <= xmax && objn.y >= ymin && objn.y <= ymax) {
+					objn.selected = true;
+				}
+			}
+			ontick();
+		}
 	}
 });
 
 
+
+function  corners2xywh(start, end) {
+	xmin = Math.min(start[0], end[0]);
+	xmax = Math.max(start[0], end[0]);
+	ymin = Math.min(start[1], end[1]);
+	ymax = Math.max(start[1], end[1]);
+	// return [xmin,xmax,ymin,ymax];
+	return [xmin, ymin, xmax-xmin, ymax-ymin];
+}
 
 function vec2( obj ) {
 	return [obj.x, obj.y];
