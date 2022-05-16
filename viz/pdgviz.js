@@ -81,17 +81,21 @@ $(function() {
 	fullN = [...N];
 	parentLinks = [];
 	
+	function ensure_multinode(multi) {
+		s = multi.join(',')
+		if( !fullN.includes(s)) {
+			let ob = {"id": s, "w" : 6, "h": 6, "display": false};
+			nodes.push(ob);
+			fullN.push(s);
+			lookup[s] = ob;
+			multi.forEach(n =>
+				parentLinks.push({"source" : s, "target" : n}) );
+		};
+	}
+	
 	for (label in ED) {
 		for(var multi of ED[label]) {
-			s = multi.join(',')
-			if( !fullN.includes(s)) {
-				let ob = {"id": s, "w" : 6, "h": 6, "display": false};
-				nodes.push(ob);
-				fullN.push(s);
-				lookup[s] = ob;
-				multi.forEach(n =>
-					parentLinks.push({"source" : s, "target" : n}) );
-			}
+			ensure_multinode(multi);
 		}
 	}
 	// window.lookup = lookup
@@ -253,36 +257,54 @@ $(function() {
 		});
 		// context.globalAlpha = 1;
 		context.restore();
-
+		
+		restyle_nodes();
 		// context.save(); // this doesn't save the image. It saves the global context.
 		// console.log(canvas.width, canvas.height);
-
-
-		/*** Now for some SVG operations. ***/
-
-		// svg.selectAll(".node").data(nodes)#.call(
-		svg.selectAll(".node").data(N)
-			.attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")");
-		 	// .attr("cx", n => n.x)
-			// .attr("cy", n => n.y);
-			// .select("circle")
-
-
-
 	}
-
-
-
-	links = Object.entries(ED).map(function([label,[src,tgt]],i) {
+	
+	function align_node_dom() {
+		nodesNdata = svg.selectAll(".node").data(N);
+			// .enter().append("g").classed("node", true);
+		newnodeGs = nodesNdata.enter()
+			.append("g")
+			.classed("node", true)
+			.call(simulation.drag);
+		newnodeGs.append("rect")
+			.classed("nodeshape", true)
+			.attr('width', n => n.w).attr('x', n => -n.w/2)
+			.attr('height', n => n.h).attr('y', n => -n.h/2)
+			.attr('rx', 15);
+		newnodeGs.append("text").text(n => n.id);
+		newnodeGs.filter( n => ! n.display).attr('display', 'none');
+		
+		// dunno if this does anything yet
+		nodesNdata.exit().remove();
+		
+		simulation.start();
+	}
+	window.align_node_dom = align_node_dom;
+	
+	function restyle_nodes() {
+		/*** Now for some SVG operations. ***/
+		svg.selectAll(".node").data(N)
+			.attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")")
+			.classed("selected", n => lookup[n].selected );
+	}
+	
+	function linkobject([label, [src,tgt]], i) {
 		// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
-		return { source: src.join(","), target: tgt.join(","), index: i, label: label};
-	});
+		return { source: src.join(","), target: tgt.join(","), index: i, label: label}
+	}
+	
+	links = Object.entries(ED).map(linkobject);
 	
 	function customForces() {
 		
 	}
 	
 
+	// TODO: Make this center force change on resize.
 	simulation = d3.forceSimulation(nodes)
 		.force("center",
 			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.03))
@@ -322,13 +344,48 @@ $(function() {
 	        .subject(function(event) {
 						// for(let n of N) {
 							// let loon = lookup[n];
-					return pick(event);
+					if(mode == 'move') {
+						return pick(event);
+					} 
+					else if (mode == 'select') {
+						return true;
+					}
 				})
 	        .on("start", dragstarted)
 	        .on("drag", dragged)
 	        .on("end", dragended)
 		);
+	
 		
+	function fresh_label() {
+		existing = Object.keys(ED);
+		i = 1;
+		while("p"+i in existing) {
+			i++; 
+		}
+		return "p"+i;
+	}
+	function fresh_node_name() {
+		existing = N;
+		i = 1;
+		while("X"+i in existing) {
+			i++; 
+		}
+		return "p"+i;
+	}
+	
+	function new_link(src, tgt, label) {
+		ensure_multinode(src);
+		ensure_multinode(tgt);
+		
+		ED[label] = [src, tgt];
+		links.push(linkobject([label, [src,tgt]], links.length));
+		align_node_dom();
+	}
+	
+	// function 
+
+
 	
 	// console.log("working? 1");
 	// function canvas_clicked(event) {
@@ -350,9 +407,32 @@ $(function() {
 		if(mode == 'move') {
 			
 		}
+		else if( mode == 'select') {
+			obj = pick(e)
+			if(obj) {
+				obj.selected = true;
+				restyle_nodes();
+		 	}
+			
+		}
 		// }
 	});
 	// svg.addEventListener("click", canvas_clicked);
+	
+	window.addEventListener("keydown", function(event){
+		console.log(event);
+		
+		if (event.key == 'S') {
+			$("#drag-mode-toolbar button[data-mode='select']").click();
+		}
+		else if (event.key == 't') {
+			// start creating arrows.
+			// 1. Create new arrow from selection at tail
+			src = N.filter( n => lookup[n].selected )			
+			lab = fresh_label();
+			new_link(src, [], lab);
+		}
+	});
 
 
 	function dragstarted(event) {
@@ -363,6 +443,7 @@ $(function() {
 		}
 		else if (mode == 'select') {
 			select_rect_start = vec2(event);
+			select_rect_end = vec2(event);
 			ontick();
 		}
 	}
@@ -392,8 +473,17 @@ $(function() {
 			for(let objn of nodes) {
 				if (objn.x >= xmin && objn.x <= xmax && objn.y >= ymin && objn.y <= ymax) {
 					objn.selected = true;
+				} else {
+					// console.log(event, event.sourceEvent.ctrlKey, event.sourceEvent.shiftKey);
+					if(! event.sourceEvent.shiftKey ) {
+						objn.selected = false;
+					}
 				}
 			}
+			restyle_nodes();
+			
+			select_rect_start = undefined;
+			select_rect_end = undefined;
 			ontick();
 		}
 	}

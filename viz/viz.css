@@ -35,12 +35,20 @@
 .node text {
 	text-anchor:middle;
 	dominant-baseline : middle;
+	font-family: serif;
 	fill : black;
 }
-.node .nodeshape {
+
+.node:not(.selected) .nodeshape {
 	fill : rgba(200,200,200, 0.3);
 	stroke-width: 1px;
 	stroke: #888;
+}
+
+.node.selected .nodeshape {
+	fill : rgba(230, 150, 50, 0.4);
+	stroke-width: 2px;
+	stroke: #863;
 }
 
 .ghost {
