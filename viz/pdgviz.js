@@ -71,14 +71,15 @@ $(function() {
 	var mouse_pt = [0,0];
 	
 
-	context = canvas.getContext("2d");
-	lookup = []
+	let context = canvas.getContext("2d");
+	lookup = [];
+	// lookup["<MOUSE>"] = mouse_pt;
 	nodes = N.map( function(varname) {
 		let ob = {"id": varname, "w" : initw, "h": inith, "display": true};
 		lookup[varname] = ob;
 		return ob;
 	});
-	parentLinks = [];
+	let parentLinks = [];
 	
 	function ensure_multinode(multi) {
 		s = multi.join(',')
@@ -103,8 +104,8 @@ $(function() {
 	}
 
 
-	nodedata = svg.selectAll(".node").data(nodes, n => n.id);
-	gnode = nodedata.enter().append("g").classed("node", true);
+	let nodedata = svg.selectAll(".node").data(nodes, n => n.id);
+	let gnode = nodedata.enter().append("g").classed("node", true);
 	gnode.append("rect")
 		.classed("nodeshape", true)
 		.attr('width', n => n.w).attr('x', n => -n.w/2)
@@ -116,8 +117,8 @@ $(function() {
 	//##  Next, Updating + Preparing shapes for drawing.  
 	//##  But first, some helpful functions.
 	function avgpos( ... nodenames ) {
-		if (nodenames.length==1 && nodenames[0] == "<MOUSE>")
-			return mouse_pt;
+		// if ( nodenames[0] == "<MOUSE>")
+		// 	return mouse_pt;
 		return   [ d3.mean(nodenames.map(v => lookup[v].x)),
 				   d3.mean(nodenames.map(v => lookup[v].y)) ];
 	}
@@ -139,9 +140,6 @@ $(function() {
 		let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
 		// console.log('ho', avgsrc,avgtgt, mid);
 		function shortener(s) {
-			if(s == "<MOUSE>") {
-				return sqshortened_end(mid, mouse_pt, [5,5], 10);
-			}
 			return sqshortened_end(mid, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
 		}
 		let avgsrcshortened = src.length == 0 ? 
@@ -229,7 +227,6 @@ $(function() {
 		}
 		
 		if(temp_link) {
-			console.log(temp_link);
 			context.stroke( compute_link_shape(temp_link.srcs, temp_link.tgts ))
 		}
 		
@@ -278,7 +275,7 @@ $(function() {
 			tgts : tgt
 		}
 	}
-	links = Object.entries(ED).map(linkobject);
+	let links = Object.entries(ED).map(linkobject);
 	
 	window.avgpos = avgpos;
 	function avgpos_alignment(alpha) {
@@ -463,11 +460,19 @@ $(function() {
 		console.log("click event");
 	
 		if( temp_link ) {
-			new_link(temp_link.srcs, [pick(e).id], fresh_label());
-			temp_link = null;
-		}
-	
-		if(mode == 'move') {
+			newtgt = pick(e);
+			if(newtgt) {
+				if(!e.shiftKey) {
+					new_tgts = temp_link.tgts.slice(1);
+					new_tgts.push(newtgt.id);
+					new_link(temp_link.srcs, new_tgts, fresh_label());
+					temp_link = null;
+				}
+				 else {
+					temp_link.tgts.push(newtgt.id);
+				}
+			}	
+		} else if(mode == 'move') {
 			obj = pick(e)
 			if(obj) {
 				obj.selected = true;
@@ -523,7 +528,8 @@ $(function() {
 	});
 	
 	window.addEventListener("mousemove", function(e) {
-		mouse_pt = [e.x, e.y];
+		// mouse_pt = [e.x, e.y];
+		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:5,h:5};
 		if(temp_link) redraw();
 		
 		if ( mode == '' ) {
@@ -566,7 +572,8 @@ $(function() {
 		}
 		else if (mode == 'draw') {
 			ontick();
-			mouse_pt = vec2(event);
+			// mouse_pt = vec2(event);
+			lookup["<MOUSE>"] = {x: event.x, y:event.y, w:5,h:5};
 		}
 	}
 
