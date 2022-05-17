@@ -68,8 +68,8 @@ $(function() {
 
 
 	var select_rect_end,  select_rect_start;
+	var mouse_pt = [0,0];
 	
-
 
 	context = canvas.getContext("2d");
 	lookup = []
@@ -78,32 +78,32 @@ $(function() {
 		lookup[varname] = ob;
 		return ob;
 	});
-	fullN = [...N];
 	parentLinks = [];
 	
 	function ensure_multinode(multi) {
 		s = multi.join(',')
-		if( !fullN.includes(s)) {
-			let ob = {"id": s, "w" : 6, "h": 6, "display": false};
+		if( ! nodes.find(n => n.id == s )) {
+			let ob = {id:s, w:6, h:6, display: false,
+				components: multi,
+			 	vx:0.0, vy:0.0};
+			
+			if( multi.length > 0 ) 
+				[ob.x, ob.y] = avgpos(...multi); // defined below.
+		
 			nodes.push(ob);
-			fullN.push(s);
 			lookup[s] = ob;
 			multi.forEach(n =>
 				parentLinks.push({"source" : s, "target" : n}) );
 		};
 	}
-	
 	for (label in ED) {
 		for(var multi of ED[label]) {
 			ensure_multinode(multi);
 		}
 	}
-	// window.lookup = lookup
-	// hlinks = ED.map(
 
 
-
-	nodedata = svg.selectAll(".node").data(nodes);
+	nodedata = svg.selectAll(".node").data(nodes, n => n.id);
 	gnode = nodedata.enter().append("g").classed("node", true);
 	gnode.append("rect")
 		.classed("nodeshape", true)
@@ -113,62 +113,110 @@ $(function() {
 	gnode.append("text").text(n => n.id);
 	gnode.filter( n => ! n.display).attr('display', 'none')
 
-	//##  Next, draw PDG + Do Updating. 
-	function ontick() {
-		context.clearRect(0, 0, canvas.width, canvas.height);
-		context.save();
-
+	//##  Next, Updating + Preparing shapes for drawing.  
+	//##  But first, some helpful functions.
+	function avgpos( ... nodenames ) {
+		if (nodenames.length==1 && nodenames[0] == "<MOUSE>")
+			return mouse_pt;
+		return   [ d3.mean(nodenames.map(v => lookup[v].x)),
+				   d3.mean(nodenames.map(v => lookup[v].y)) ];
+	}
+	function compute_link_shape( src, tgt ) {
+		// let srcnode = lookup[src.join(",")];
+		// let avgsrc = vec2(srcnode);
+		// if( src.length > 0 ) {
+		// 	avgsrc = avgpos(...src);
+		// }
+		let avgsrc = src.length==0 ? vec2(lookup['']) : avgpos(...src);
 		
-		for (label in ED) {
-			let [src, tgt] = ED[label]
-			
-			// console.log(src, tgt, lookup);
-			srcnode = lookup[src.join(",")];
-			let avgsrc = vec2(srcnode);
-			if( src.length > 0 ) {
-				avgsrc = [ d3.mean(src.map(v => lookup[v].x)),
-										d3.mean(src.map(v => lookup[v].y)) ];
-				srcnode.vx += (avgsrc[0] - srcnode.x) * 0.2
-				srcnode.vy += (avgsrc[1] - srcnode.y) * 0.2
-			}
-			tgtnode = lookup[tgt.join(",")];
-			let avgtgt = vec2(tgtnode);
-			// if( tgt.length > 0 ) {
-			// 	srcnode.vx += (avgsrc[0] - srcnode.x) * 0.2
-			// 	srcnode.vy += (avgsrc[1] - srcnode.y) * 0.2
-			// 	avgtgt = [ d3.mean(tgt.map(v => lookup[v].x)),
-			// 							d3.mean(tgt.map(v => lookup[v].y)) ];
-			// }
-			if( tgt.length > 0 ) {
-				avgtgt = [ d3.mean(tgt.map(v => lookup[v].x)),
-										d3.mean(tgt.map(v => lookup[v].y)) ];
-				tgtnode.vx += (avgtgt[0] - tgtnode.x) * 0.2
-				tgtnode.vy += (avgtgt[1] - tgtnode.y) * 0.2
-			}
+		// let tgtnode = lookup[tgt.join(",")];
+		// let avgtgt = vec2(tgtnode);
+		// if( tgt.length == 0 ) {
+		// 	avgtgt = avgpos(...tgt);
+		// }
+		let avgtgt = tgt.length==0 ? vec2(lookup['']) : avgpos(...tgt);
 
-			let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
-			// console.log('ho', avgsrc,avgtgt, mid);
-			const shortener = s =>
-				sqshortened_end(mid, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
-			let avgsrcshortened = src.length == 0 ? 
-				shortener("") : scale(addv(... src.map(shortener)), 1 / src.length);
-			let avgtgtshortened = tgt.length == 0 ?
-				shortener("") : scale(addv(... tgt.map(shortener)), 1 / tgt.length);
-			let midearly = mid;
-			mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
-				.5*avgsrcshortened[1] + .5*avgtgtshortened[1] ];
-			// let avgtgtshortened = addv(
-			// 	...tgt.map(t =>
-			// 		sqshortened_end(mid, vec2(lookup[t]), [lookup[t].w, lookup[t].h]))
-			// 			/ tgt.length
-			// );
-			
-			// if(!srcnode.id){
-			// 	console.log(midearly, mid, avgsrc, avgtgt);
-			// }
-			// console.log(srcnode.id, srcnode.x, srcnode.y, '\t', tgtnode.id,  tgtnode.x, tgtnode.y);
-			// console.log(avgtgtshortened);
-			
+		let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
+		// console.log('ho', avgsrc,avgtgt, mid);
+		function shortener(s) {
+			if(s == "<MOUSE>") {
+				return sqshortened_end(mid, mouse_pt, [5,5], 10);
+			}
+			return sqshortened_end(mid, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
+		}
+		let avgsrcshortened = src.length == 0 ? 
+			shortener("") : scale(addv(... src.map(shortener)), 1 / src.length);
+		let avgtgtshortened = tgt.length == 0 ?
+			shortener("") : scale(addv(... tgt.map(shortener)), 1 / tgt.length);
+		let midearly = mid;
+		mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
+			.5*avgsrcshortened[1] + .5*avgtgtshortened[1] ];
+		// let avgtgtshortened = addv(
+		// 	...tgt.map(t =>
+		// 		sqshortened_end(mid, vec2(lookup[t]), [lookup[t].w, lookup[t].h]))
+		// 			/ tgt.length
+		// );
+		
+		let lpath = new Path2D();
+		src.forEach( function(s) {
+			// lpath.moveTo(...shortener(s));
+			// lpath.moveTo(lookup[s].x, lookup[s].y);
+			startpt = shortener(s);
+			lpath.moveTo(...startpt);
+			// lpath.quadraticCurveTo(avgsrcshortened[0], avgsrcshortened[1], mid[0], mid[1]);
+			lpath.bezierCurveTo(
+					// avgtgt[0], avgtgt[1],
+					0.2*midearly[0] + startpt[0]*(0.8),
+					0.2*midearly[1] + startpt[1]*(0.8),
+					.8*avgsrcshortened[0] + mid[0]*(0.2),
+					.8*avgsrcshortened[1] + mid[1]*(0.2),
+					// lookup[s].x, lookup[s].y,
+					mid[0], mid[1]);
+			// lpath.lineTo(mid[0], mid[1]);
+		});
+		tgt.forEach( function(t) {
+			lpath.moveTo( mid[0], mid[1] );
+			// lpath.quadraticCurveTo(avgtgt[0], avgtgt[1], lookup[t].x, lookup[t].y);
+			let endpt = shortener(t);
+			// console.log(mid, vec2(lookup[t]), endpt);
+			// scale(delta, Math.max(0, norm-35) / norm )
+
+			// lpath.quadraticCurveTo(avgtgtshortened[0], avgtgtshortened[1], endpt[0], endpt[1]);
+			lpath.lineTo(...endpt);
+			let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, 10);
+			lpath.moveTo(...endpt);
+			lpath.quadraticCurveTo(armid0[0], armid0[1], ar0[0], ar0[1]);
+			lpath.moveTo(...endpt);
+			lpath.quadraticCurveTo(armid1[0], armid1[1], ar1[0], ar1[1]);
+		});
+		return lpath;
+	}
+	function ontick() {
+		// for (label in ED) {
+		// 	 let [src, tgt] = ED[label];
+		for (let l of links) {
+			l.path2d = compute_link_shape(l.srcs, l.tgts);
+		}
+		
+		nodes.forEach(function(n) {
+			//updating
+			n.x = clamp(n.x, n.w/2, canvas.width - n.w/2);
+			n.y = clamp(n.y, n.h/2, canvas.height - n.h/2);
+		});
+		
+		restyle_nodes();
+		redraw();
+	}
+	function redraw() {
+		context.save();
+		context.clearRect(0, 0, canvas.width, canvas.height);
+		
+		context.lineWidth = 1.5;
+		context.strokeStyle = "black";
+		// context.setLineDash([]);
+
+		for( let l of links) {
+			context.stroke(l.path2d);
 			// context.lineWidth = 1;
 			// context.setLineDash([4,1]);
 			// context.strokeStyle = 'red';
@@ -178,144 +226,98 @@ $(function() {
 			// context.moveTo(...avgsrcshortened);
 			// context.lineTo(...avgtgtshortened);
 			// context.stroke();
-			
-
-			context.lineWidth = 1.5;
-			context.strokeStyle = "black";
-			context.setLineDash([]);
-			context.beginPath();
-			src.forEach( function(s) {
-				// context.moveTo(...shortener(s));
-				// context.moveTo(lookup[s].x, lookup[s].y);
-				startpt = shortener(s);
-				context.moveTo(...startpt);
-				// context.quadraticCurveTo(avgsrcshortened[0], avgsrcshortened[1], mid[0], mid[1]);
-				context.bezierCurveTo(
-						// avgtgt[0], avgtgt[1],
-						0.2*midearly[0] + startpt[0]*(0.8),
-						0.2*midearly[1] + startpt[1]*(0.8),
-						.8*avgsrcshortened[0] + mid[0]*(0.2),
-						.8*avgsrcshortened[1] + mid[1]*(0.2),
-						// lookup[s].x, lookup[s].y,
-						mid[0], mid[1]);
-
-				// context.lineTo(mid[0], mid[1]);
-			});
-			tgt.forEach( function(t) {
-				context.moveTo( mid[0], mid[1] );
-				// context.quadraticCurveTo(avgtgt[0], avgtgt[1], lookup[t].x, lookup[t].y);
-				let endpt = shortener(t);
-				// console.log(mid, vec2(lookup[t]), endpt);
-				// scale(delta, Math.max(0, norm-35) / norm )
-
-				// context.quadraticCurveTo(avgtgtshortened[0], avgtgtshortened[1], endpt[0], endpt[1]);
-				context.lineTo(...endpt);
-				let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, 10);
-				context.moveTo(...endpt);
-				context.quadraticCurveTo(armid0[0], armid0[1], ar0[0], ar0[1]);
-				context.moveTo(...endpt);
-				context.quadraticCurveTo(armid1[0], armid1[1], ar1[0], ar1[1]);
-			});
-			context.stroke();
 		}
-
-		// context.stroke();
-		// context.fill();
-		// context.restore();
-		// nodes.forEach(function(n) {
-		// 	context.moveTo(n.x, n.y);
-		// 	context.arc(n.x, n.y, 3, 0, 2 * Math.PI);
-		// });
 		
+		if(temp_link) {
+			console.log(temp_link);
+			context.stroke( compute_link_shape(temp_link.srcs, temp_link.tgts ))
+		}
 		
-		context.globalAlpha = 0.2;
-		// console.log('mode', mode);
 		// Draw Selection Rectangle
+		context.globalAlpha = 0.2;
 		if( mode == "select" && select_rect_start && select_rect_end ) {
 			// console.log(...corners2xywh(select_rect_start, select_rect_end))
 			// context.save();
 			context.fillStyle="orange";
+			
 			// context.fillRect(select_rect_start.x, select_rect_start.y, select_rect_end.x, select_rect_end.y);
 			// let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
 			context.fillRect(...corners2xywh(select_rect_start, select_rect_end));
-			context.stroke();
+			// context.stroke();
 			// context.restore();
 		}
 		
 		/// Draw the invisible product nodes + make sure no node goes off screen.
-		fullN.forEach(function(nn) {
-			n = lookup[nn];			
-			//updating
-			n.x = clamp(n.x, n.w/2, canvas.width - n.w/2);
-			n.y = clamp(n.y, n.h/2, canvas.height - n.h/2);
-			//drawing
-			if(! N.includes(nn)) {
+		context.globalAlpha = 0.5;
+		nodes.forEach(function(n) {
+			if(! n.display ) {
+				context.beginPath();
+
+				if( n.selected )
+					context.strokeStyle="#EA2";
+				else context.strokeStyle="#AAA";
+				
 				context.moveTo(n.x, n.y);
 				context.arc(n.x, n.y, 3, 0, 2 * Math.PI);
-				context.stroke();
+				context.stroke();				
 			}
 		});
 		// context.globalAlpha = 1;
 		context.restore();
-		
-		restyle_nodes();
-		// context.save(); // this doesn't save the image. It saves the global context.
-		// console.log(canvas.width, canvas.height);
-	}
-	
-	function align_node_dom() {
-		nodesNdata = svg.selectAll(".node").data(N);
-			// .enter().append("g").classed("node", true);
-		newnodeGs = nodesNdata.enter()
-			.append("g")
-			.classed("node", true)
-			.call(simulation.drag);
-		newnodeGs.append("rect")
-			.classed("nodeshape", true)
-			.attr('width', n => n.w).attr('x', n => -n.w/2)
-			.attr('height', n => n.h).attr('y', n => -n.h/2)
-			.attr('rx', 15);
-		newnodeGs.append("text").text(n => n.id);
-		newnodeGs.filter( n => ! n.display).attr('display', 'none');
-		
-		// dunno if this does anything yet
-		nodesNdata.exit().remove();
-		
-		simulation.start();
-	}
-	window.align_node_dom = align_node_dom;
-	
-	function restyle_nodes() {
-		/*** Now for some SVG operations. ***/
-		svg.selectAll(".node").data(N)
-			.attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")")
-			.classed("selected", n => lookup[n].selected );
 	}
 	
 	function linkobject([label, [src,tgt]], i) {
 		// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
-		return { source: src.join(","), target: tgt.join(","), index: i, label: label}
+		return {
+			source: src.join(","), 
+			target: tgt.join(","), 
+			index: i, 
+			label: label,
+			display: true,
+			srcs : src,
+			tgts : tgt
+		}
 	}
-	
 	links = Object.entries(ED).map(linkobject);
 	
-	function customForces() {
-		
+	window.avgpos = avgpos;
+	function avgpos_alignment(alpha) {
+		for(let n of nodes) {
+			if (n.components && n.components.length > 1) {
+				// console.log('working?');
+				let avg = avgpos(...n.components);
+				// let delta = subv(avg, vec2(n));
+				// let scale = Math.pow(mag(delta), alpha);
+				// n.vx += sgn(avg[0] - n.x) * scale * 1
+				// n.vy += sgn(avg[1] - n.y) * scale * 1 
+				
+				// n.vx += (avg[0] - n.x) * 0.3 * alpha;
+				// n.vy += (avg[1] - n.y) * 0.3 * alpha;
+				
+				n.vx += (avg[0] - n.x) * 0.3;
+				n.vy += (avg[1] - n.y) * 0.3;
+			}
+		}
+		// now even out forces
+		// for( let l of links) {
+			//// TODO softly even out distances between components across links.
+		// }
 	}
-	
 
 	// TODO: Make this center force change on resize.
 	simulation = d3.forceSimulation(nodes)
 		.force("center",
 			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.03))
-		.force("charge", d3.forceManyBody().strength(
-			n => n.display ? -100 : -100))
+		// .force("charge", d3.forceManyBody().strength(
+		// 	n => n.display ? -100 : -100))
+		.force("charge", d3.forceManyBody().strength( -100))
 		.force("link", d3.forceLink(links).id(l => l.id)
 			.strength(1).distance(110).iterations(3))
 		.force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
 				.strength(0.3).distance(40).iterations(2))
 		.force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 				.strength(0.5).iterations(5))
+		.force("avgpos_align", avgpos_alignment)
 		.on("tick", ontick)
 		.stop();
 	simulation.alphaDecay(0.05);
@@ -342,23 +344,21 @@ $(function() {
 	    .call(d3.drag()
 	        .container(canvas)
 	        .subject(function(event) {
-						// for(let n of N) {
-							// let loon = lookup[n];
-					if(mode == 'move') {
-						return pick(event);
-					} 
-					else if (mode == 'select') {
-						return true;
-					}
+					if (mode == 'select') return true;
+					if (mode == 'draw' && temp_link) return undefined;
+					else return pick(event);
 				})
 	        .on("start", dragstarted)
 	        .on("drag", dragged)
 	        .on("end", dragended)
 		);
 	
-		
+	function set_mode(mode) {
+		$("#drag-mode-toolbar button[data-mode='"+mode+"']").click();
+	}
 	function fresh_label() {
-		existing = Object.keys(ED);
+		// existing = Object.keys(ED);
+		existing = links.map( l => l.label)
 		i = 1;
 		while("p"+i in existing) {
 			i++; 
@@ -373,66 +373,168 @@ $(function() {
 		}
 		return "p"+i;
 	}
-	
 	function new_link(src, tgt, label) {
 		ensure_multinode(src);
 		ensure_multinode(tgt);
+		simulation.nodes(nodes);
+		simulation.force("anotherlink").links(parentLinks);
+		align_node_dom();
 		
 		ED[label] = [src, tgt];
-		links.push(linkobject([label, [src,tgt]], links.length));
-		align_node_dom();
+		lobj = linkobject([label, [src,tgt]], links.length);
+		links.push(lobj);
+		simulation.force("link").links(links);
+
+		simulation.alpha(0.7).restart();
+		
+		return lobj;
 	}
-	
-	// function 
+	function align_node_dom() {
+		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
 
+			// .enter().append("g").classed("node", true);
+		newnodeGs = nodedata.enter()
+			.append("g")
+			.classed("node", true);
+			// .call(simulation.drag);
+		newnodeGs.append("rect")
+			.classed("nodeshape", true)
+			.attr('width', n => n.w).attr('x', n => -n.w/2)
+			.attr('height', n => n.h).attr('y', n => -n.h/2)
+			.attr('rx', 15);
+		newnodeGs.append("text").text(n => n.id);
+		newnodeGs.filter( n => ! n.display).attr('display', 'none');
+		
+		// dunno if this does anything yet
+		nodedata.exit().each(remove_node)
+			.remove();
+				
+		simulation.nodes(nodes);
+		simulation.restart();
+	}
+	function restyle_nodes() {
+		/*** Now for some SVG operations. ***/
+		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
+		nodedata
+			// .attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")")
+			// .classed("selected", n => lookup[n].selected );
+			.attr("transform", n => "translate(" + n.x + ","+ n.y +")")
+			.classed("selected", n => n.selected );
+	}
+	function remove_node(n) {
+		for(let l of links) {
+			if(l.source.id == n.id || l.target.id == n.id)
+				remove_link(l);
+		}
+		
+		let multis_to_remove = [];
+		for(let i = 0; i < parentLinks.length; i++) {
+			l = parentLinks[i];
+			if(l.source.id == n.id || l.target.id == n.id) {
+				parentLinks.splice(i,1);
 
-	
-	// console.log("working? 1");
-	// function canvas_clicked(event) {
-	// 	console.log("hi", event);
-	// 	window.alert(d3.event.ctrlKey || d3.event.metaKey);
-	// }
-	// canvas.on("click", canvas_clicked)
-	// canvas.addEventListener("click", canvas_clicked);
-	
+				cpt_idx = l.source.components.indexOf(n.id);
+				l.source.components.splice(cpt_idx,1);
+				// if( l.source.components.length == 0)
+				ensure_multinode(l.source.components);
+				multis_to_remove.push(l.source);
+				i--;
+			}
+		}
+		delete lookup[n.id];
+		// multis_to_remove.forEach(remove_node);
+	}
+	function remove_link( l ) {
+		delete ED[l.label];
+		const index = links.indexOf(l);
+		if(index >= 0) {
+			links.splice(index,1);
+		}
+	}
+		
 	canvas.addEventListener("dblclick", function(e) {
 		if(e.ctrlKey || e.metaKey) {
 		}
 	});
 	
 	canvas.addEventListener("click", function(e) {
-		// window.alert(e.ctrlKey || e.metaKey);
 		// ADD NEW NODE
 		// if(e.ctrlKey || e.metaKey) {
-		if(mode == 'move') {
-			
+		console.log("click event");
+	
+		if( temp_link ) {
+			new_link(temp_link.srcs, [pick(e).id], fresh_label());
+			temp_link = null;
 		}
-		else if( mode == 'select') {
+	
+		if(mode == 'move') {
 			obj = pick(e)
 			if(obj) {
 				obj.selected = true;
 				restyle_nodes();
-		 	}
-			
+		 	}			
 		}
 		// }
 	});
+
 	// svg.addEventListener("click", canvas_clicked);
+	
+	var temp_link = null;
+	// const mousenode = { id : "<MOUSE>", w}
 	
 	window.addEventListener("keydown", function(event){
 		console.log(event);
 		
-		if (event.key == 'S') {
-			$("#drag-mode-toolbar button[data-mode='select']").click();
+		if(event.key == 'Escape'){
+			if ( temp_link ) {
+				temp_link = null;
+				redraw();
+			}
+			else {
+			}
+		}
+		else if (event.key == 'b') {
+			// $("#drag-mode-toolbar button[data-mode='select']").click();
+			set_mode('select');
 		}
 		else if (event.key == 't') {
 			// start creating arrows.
 			// 1. Create new arrow from selection at tail
-			src = N.filter( n => lookup[n].selected )			
-			lab = fresh_label();
-			new_link(src, [], lab);
+			src = nodes.filter( n => n.selected ).map( n => n.id );
+			// lab = fresh_label();
+			// temp_link = new_link(src, ['<MOUSE>'], "<TEMPORARY>");
+			temp_link = linkobject(['<TEMPORARY>', [src, ["<MOUSE>"]]], undefined)
+			// set_mode('draw');
+			// links.push(temp_link);
+		}
+		else if (event.key == ' ') {
+			if(mode == 'select') {
+				// TODO shift selection to backup selection (red color)
+			}
+		}
+		else if (event.key == 'x') {
+			// nodedata = svg.selectAll('.node').data(nodes, n => n.id);
+			// nodedata.
+			// 	filter(n => n.selected).remove();
+			// links = links.filter(l => l.)
+			nodes = nodes.filter(n => !n.selected);
+			align_node_dom();
 		}
 	});
+	
+	window.addEventListener("mousemove", function(e) {
+		mouse_pt = [e.x, e.y];
+		if(temp_link) redraw();
+		
+		if ( mode == '' ) {
+			// TODO make it so that, after t is pressed, there's
+			// a phantom node that follows the cursor, until click.
+			// nodes
+		}
+		if ( mode == 'move' /* && gpressed */ ) {
+			// TODO move selection, like ondrag below
+		}
+	})
 
 
 	function dragstarted(event) {
@@ -446,6 +548,11 @@ $(function() {
 			select_rect_end = vec2(event);
 			ontick();
 		}
+		else if (mode == 'draw') {
+			console.log(event.subject);
+			temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]], undefined);
+			ontick();
+		}
 	}
 
 	function dragged(event) {
@@ -456,6 +563,10 @@ $(function() {
 		else if (mode == 'select') {
 			select_rect_end = vec2(event);
 			ontick();
+		}
+		else if (mode == 'draw') {
+			ontick();
+			mouse_pt = vec2(event);
 		}
 	}
 
@@ -475,16 +586,22 @@ $(function() {
 					objn.selected = true;
 				} else {
 					// console.log(event, event.sourceEvent.ctrlKey, event.sourceEvent.shiftKey);
-					if(! event.sourceEvent.shiftKey ) {
+					if(! event.sourceEvent.shiftKey && objn.selected ) {
+						// 0 -> 0 (unselected); 1 -> 2 (demote primary selection); (2 -> 1)
 						objn.selected = false;
 					}
 				}
 			}
+			finalnode = pick(event);
+			if(finalnode) finalnode.selected = true;
 			restyle_nodes();
 			
-			select_rect_start = undefined;
-			select_rect_end = undefined;
+			select_rect_start = null;
+			select_rect_end = null;
 			ontick();
+		} else if (mode == 'draw') {
+			new_link(temp_link.srcs, [pick(event).id], fresh_label());
+			temp_link = null;
 		}
 	}
 });
