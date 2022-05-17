@@ -73,13 +73,16 @@ $(function() {
 
 	let context = canvas.getContext("2d");
 	lookup = [];
-	// lookup["<MOUSE>"] = mouse_pt;
+	// TODO make this a let later
 	nodes = N.map( function(varname) {
 		let ob = {"id": varname, "w" : initw, "h": inith, "display": true};
 		lookup[varname] = ob;
 		return ob;
 	});
+	// window.nodes = nodes;
 	let parentLinks = [];
+	// TODO let, later
+	// let link_nodes = [];
 	
 	function ensure_multinode(multi) {
 		s = multi.join(',')
@@ -122,7 +125,7 @@ $(function() {
 		return   [ d3.mean(nodenames.map(v => lookup[v].x)),
 				   d3.mean(nodenames.map(v => lookup[v].y)) ];
 	}
-	function compute_link_shape( src, tgt ) {
+	function compute_link_shape( src, tgt, midpt=undefined, return_mid=false) {
 		// let srcnode = lookup[src.join(",")];
 		// let avgsrc = vec2(srcnode);
 		// if( src.length > 0 ) {
@@ -187,13 +190,19 @@ $(function() {
 			lpath.moveTo(...endpt);
 			lpath.quadraticCurveTo(armid1[0], armid1[1], ar1[0], ar1[1]);
 		});
+		if(return_mid) return [lpath, mid];
 		return lpath;
 	}
 	function ontick() {
 		// for (label in ED) {
 		// 	 let [src, tgt] = ED[label];
-		for (let l of links) {
-			l.path2d = compute_link_shape(l.srcs, l.tgts);
+		for (let ln of linknodes) {
+		// for (let l of links) {
+			let l = ln.link;
+			let mid;
+			[l.path2d, mid] = compute_link_shape(l.srcs, l.tgts, midpt=vec2(ln), return_mid=true);
+			ln.x += (mid[0] - ln.x) * 0.25;
+			ln.y += (mid[1] - ln.y) * 0.25;
 		}
 		
 		nodes.forEach(function(n) {
@@ -259,6 +268,17 @@ $(function() {
 				context.stroke();				
 			}
 		});
+		linknodes.forEach(function(n) {
+			context.beginPath();
+
+			if( n.selected )
+				context.strokeStyle="#1AE";
+			else context.strokeStyle="#A4C";
+			
+			context.moveTo(n.x, n.y);
+			context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
+			context.stroke();				
+		});
 		// context.globalAlpha = 1;
 		context.restore();
 	}
@@ -275,7 +295,16 @@ $(function() {
 			tgts : tgt
 		}
 	}
-	let links = Object.entries(ED).map(linkobject);
+	function mk_linknode(link) {
+		let ob = {
+			// id: link.label+link.source+link.target
+			id: link.label, 
+			link: link,
+			x: avgpos[0], y: avgpos[1], vx: 0, vy:0,
+			w : 10, h : 10,  display: false};
+		return ob;
+	}
+	links = Object.entries(ED).map(linkobject);
 	
 	window.avgpos = avgpos;
 	function avgpos_alignment(alpha) {
@@ -301,13 +330,14 @@ $(function() {
 		// }
 	}
 
+	linknodes = links.map(mk_linknode)
 	// TODO: Make this center force change on resize.
-	simulation = d3.forceSimulation(nodes)
+	simulation = d3.forceSimulation(nodes.concat(linknodes))
 		.force("center",
 			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.03))
-		// .force("charge", d3.forceManyBody().strength(
-		// 	n => n.display ? -100 : -100))
-		.force("charge", d3.forceManyBody().strength( -100))
+		.force("charge", d3.forceManyBody().strength(
+				n => n.display ? -100 : 0))
+		// .force("charge", d3.forceManyBody().strength( -100))
 		.force("link", d3.forceLink(links).id(l => l.id)
 			.strength(1).distance(110).iterations(3))
 		.force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
@@ -362,20 +392,20 @@ $(function() {
 		}
 		return "p"+i;
 	}
-	function fresh_node_name() {
+	function fresh_node_name(prefix="X") {
 		existing = N;
 		i = 1;
-		while("X"+i in existing) {
+		while(prefix+i in existing) {
 			i++; 
 		}
-		return "p"+i;
+		return prefix+i;
 	}
 	function new_link(src, tgt, label) {
 		ensure_multinode(src);
 		ensure_multinode(tgt);
-		simulation.nodes(nodes);
-		simulation.force("anotherlink").links(parentLinks);
+		// simulation.nodes(nodes);
 		align_node_dom();
+		simulation.force("anotherlink").links(parentLinks);
 		
 		ED[label] = [src, tgt];
 		lobj = linkobject([label, [src,tgt]], links.length);
@@ -385,6 +415,15 @@ $(function() {
 		simulation.alpha(0.7).restart();
 		
 		return lobj;
+	}
+	function new_node(vname, x,y) {
+		let ob = {
+			id: vname, 
+			x: x, y: y, vx: 0, vy:0,
+			w : initw, h : inith,  display: true};
+		nodes.push(ob);
+		lookup[vname] = ob;
+		align_node_dom();
 	}
 	function align_node_dom() {
 		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
@@ -405,8 +444,9 @@ $(function() {
 		// dunno if this does anything yet
 		nodedata.exit().each(remove_node)
 			.remove();
-				
-		simulation.nodes(nodes);
+		
+		linknodes = links.map(mk_linknode);
+		simulation.nodes(nodes.concat(linknodes));
 		simulation.restart();
 	}
 	function restyle_nodes() {
@@ -450,6 +490,18 @@ $(function() {
 	}
 		
 	canvas.addEventListener("dblclick", function(e) {
+		if (true) { // mode guard later 
+			// TODO guards: not already on top of a node. Picks none. 
+			// new node.
+			
+			if(!pick(e))
+			setTimeout(function() {
+				let name = window.prompt("Enter A Variable Name", fresh_node_name());
+				new_node(name, e.x, e.y);
+				ontick();
+			}, 10);
+		}
+		
 		if(e.ctrlKey || e.metaKey) {
 		}
 	});
@@ -475,9 +527,11 @@ $(function() {
 		} else if(mode == 'move') {
 			obj = pick(e)
 			if(obj) {
+				if(!e.shiftKey)
+					nodes.forEach(n => {n.selected=false;});
 				obj.selected = true;
 				restyle_nodes();
-		 	}			
+		 	}
 		}
 		// }
 	});
@@ -525,6 +579,13 @@ $(function() {
 			nodes = nodes.filter(n => !n.selected);
 			align_node_dom();
 		}
+		else if (event.key == 'd') {
+			set_mode("draw");
+		}
+		else if (event.key == 'm') {
+			set_mode("move");
+		}
+
 	});
 	
 	window.addEventListener("mousemove", function(e) {
@@ -607,8 +668,12 @@ $(function() {
 			select_rect_end = null;
 			ontick();
 		} else if (mode == 'draw') {
-			new_link(temp_link.srcs, [pick(event).id], fresh_label());
+			pickobj = pick(event);
+			if(pickobj) {
+				new_link(temp_link.srcs, [pickobj.id], fresh_label());
+			}
 			temp_link = null;
+			ontick();
 		}
 	}
 });
