@@ -140,18 +140,23 @@ $(function() {
 		// }
 		let avgtgt = tgt.length==0 ? vec2(lookup['']) : avgpos(...tgt);
 
-		let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
+		// let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
+		// let mid = midpt ? midpt : 
+		let midearly = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
 		// console.log('ho', avgsrc,avgtgt, mid);
 		function shortener(s) {
-			return sqshortened_end(mid, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
+			return sqshortened_end(midearly, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
 		}
 		let avgsrcshortened = src.length == 0 ? 
 			shortener("") : scale(addv(... src.map(shortener)), 1 / src.length);
 		let avgtgtshortened = tgt.length == 0 ?
 			shortener("") : scale(addv(... tgt.map(shortener)), 1 / tgt.length);
-		let midearly = mid;
-		mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
+		// let midearly = mid;
+		// mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
+		// 	.5*avgsrcshortened[1] + .5*avgtgtshortened[1] ];
+		let true_mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
 			.5*avgsrcshortened[1] + .5*avgtgtshortened[1] ];
+		let mid = midpt ? midpt : true_mid;
 		// let avgtgtshortened = addv(
 		// 	...tgt.map(t =>
 		// 		sqshortened_end(mid, vec2(lookup[t]), [lookup[t].w, lookup[t].h]))
@@ -165,6 +170,14 @@ $(function() {
 			startpt = shortener(s);
 			lpath.moveTo(...startpt);
 			// lpath.quadraticCurveTo(avgsrcshortened[0], avgsrcshortened[1], mid[0], mid[1]);
+			// lpath.bezierCurveTo(
+			// 		// avgtgt[0], avgtgt[1],
+			// 		0.2*midearly[0] + startpt[0]*(0.8),
+			// 		0.2*midearly[1] + startpt[1]*(0.8),
+			// 		.8*avgsrcshortened[0] + mid[0]*(0.2),
+			// 		.8*avgsrcshortened[1] + mid[1]*(0.2),
+			// 		// lookup[s].x, lookup[s].y,
+			// 		mid[0], mid[1]);
 			lpath.bezierCurveTo(
 					// avgtgt[0], avgtgt[1],
 					0.2*midearly[0] + startpt[0]*(0.8),
@@ -173,6 +186,7 @@ $(function() {
 					.8*avgsrcshortened[1] + mid[1]*(0.2),
 					// lookup[s].x, lookup[s].y,
 					mid[0], mid[1]);
+
 			// lpath.lineTo(mid[0], mid[1]);
 		});
 		tgt.forEach( function(t) {
@@ -190,19 +204,18 @@ $(function() {
 			lpath.moveTo(...endpt);
 			lpath.quadraticCurveTo(armid1[0], armid1[1], ar1[0], ar1[1]);
 		});
-		if(return_mid) return [lpath, mid];
+		if(return_mid) return [lpath, true_mid];
 		return lpath;
 	}
 	function ontick() {
 		// for (label in ED) {
 		// 	 let [src, tgt] = ED[label];
-		for (let ln of linknodes) {
 		// for (let l of links) {
+		// 	l.path2d = compute_link_shape(l.srcs,l.tgts);
+		// }
+		for (let ln of linknodes) {
 			let l = ln.link;
-			let mid;
-			[l.path2d, mid] = compute_link_shape(l.srcs, l.tgts, midpt=vec2(ln), return_mid=true);
-			ln.x += (mid[0] - ln.x) * 0.25;
-			ln.y += (mid[1] - ln.y) * 0.25;
+			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 		}
 		
 		nodes.forEach(function(n) {
@@ -268,18 +281,18 @@ $(function() {
 				context.stroke();				
 			}
 		});
-		linknodes.forEach(function(n) {
-			context.beginPath();
-
-			if( n.selected )
-				context.strokeStyle="#1AE";
-			else context.strokeStyle="#A4C";
-			
-			context.moveTo(n.x, n.y);
-			context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
-			context.stroke();				
-		});
-		// context.globalAlpha = 1;
+		// linknodes.forEach(function(n) {
+		// 	context.beginPath();
+		// 
+		// 	if( n.selected )
+		// 		context.strokeStyle="#1AE";
+		// 	else context.strokeStyle="#A4C";
+		// 
+		// 	context.moveTo(n.x, n.y);
+		// 	context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
+		// 	context.stroke();				
+		// });
+		context.globalAlpha = 1;
 		context.restore();
 	}
 	
@@ -296,18 +309,19 @@ $(function() {
 		}
 	}
 	function mk_linknode(link) {
+		let avg = avgpos(...link.srcs, ...link.tgts)
 		let ob = {
 			// id: link.label+link.source+link.target
-			id: link.label, 
+			id: "ℓ"+link.label, 
 			link: link,
-			x: avgpos[0], y: avgpos[1], vx: 0, vy:0,
+			x: avg[0], y: avg[1], vx: 0, vy:0,
 			w : 10, h : 10,  display: false};
 		return ob;
 	}
 	links = Object.entries(ED).map(linkobject);
 	
 	window.avgpos = avgpos;
-	function avgpos_alignment(alpha) {
+	function multi_avgpos_alignment_force(alpha) {
 		for(let n of nodes) {
 			if (n.components && n.components.length > 1) {
 				// console.log('working?');
@@ -317,11 +331,11 @@ $(function() {
 				// n.vx += sgn(avg[0] - n.x) * scale * 1
 				// n.vy += sgn(avg[1] - n.y) * scale * 1 
 				
-				// n.vx += (avg[0] - n.x) * 0.3 * alpha;
-				// n.vy += (avg[1] - n.y) * 0.3 * alpha;
+				n.vx += (avg[0] - n.x) * 0.3 * alpha;
+				n.vy += (avg[1] - n.y) * 0.3 * alpha;
 				
-				n.vx += (avg[0] - n.x) * 0.3;
-				n.vy += (avg[1] - n.y) * 0.3;
+				// n.vx += (avg[0] - n.x) * 0.3;
+				// n.vy += (avg[1] - n.y) * 0.3;
 			}
 		}
 		// now even out forces
@@ -329,22 +343,55 @@ $(function() {
 			//// TODO softly even out distances between components across links.
 		// }
 	}
+	function midpoint_aligning_force(alpha) {
+		for (let ln of linknodes) {
+			let l = ln.link;
+			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
+			// ln.x += (mid[0] - ln.x) * 0.25;
+			// ln.y += (mid[1] - ln.y) * 0.25;
+			ln.vx += (ln.true_mid[0] - ln.x) * 0.55 *alpha;
+			ln.vy += (ln.true_mid[1] - ln.y) * 0.55 *alpha;
+		}
+	}
 
 	linknodes = links.map(mk_linknode)
+	function mk_bipartite_links(links){
+		bipartite_links = []
+		for( let l of links) {
+			let lname = "ℓ" + l.label;
+			
+			// l.srcs.map( s =>  {source:s, target:lname})
+			for( let s of l.srcs) {
+				bipartite_links.push({ source: s, target: lname, nsibls: l.srcs.length});
+			}
+			for( let t of l.tgts) {
+				bipartite_links.push({ source: lname, target: t, nsibls: l.tgts.length });
+			}
+		}
+		return bipartite_links;
+	}
 	// TODO: Make this center force change on resize.
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
-		.force("center",
-			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.03))
+	// simulation = d3.forceSimulation(nodes)
+		
+		//// .force("charge", d3.forceManyBody().strength( -100))
+		// .force("link", d3.forceLink(links).id(l => l.id)
+		// 	.strength(1).distance(110).iterations(3))
+		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
+		// 		.strength(0.3).distance(40).iterations(2))
+		.force("avgpos_align", multi_avgpos_alignment_force)
+		.force("midpt_align", midpoint_aligning_force)
 		.force("charge", d3.forceManyBody().strength(
-				n => n.display ? -100 : 0))
-		// .force("charge", d3.forceManyBody().strength( -100))
-		.force("link", d3.forceLink(links).id(l => l.id)
-			.strength(1).distance(110).iterations(3))
-		.force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
-				.strength(0.3).distance(40).iterations(2))
-		.force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
+			n => n.display ? -100 : -100))
+		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
+			.strength(1).distance(l => 30*(l.nsibls+1) ).iterations(3))
+		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
+		// 		.strength(0.5).iterations(5))
+		.force("nointersect", d3.forceCollide().radius(
+					n => n.display ? n.w/2 : (n.link ? 10 : 0))
 				.strength(0.5).iterations(5))
-		.force("avgpos_align", avgpos_alignment)
+		.force("center",
+			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.1))
 		.on("tick", ontick)
 		.stop();
 	simulation.alphaDecay(0.05);
@@ -383,21 +430,18 @@ $(function() {
 	function set_mode(mode) {
 		$("#drag-mode-toolbar button[data-mode='"+mode+"']").click();
 	}
-	function fresh_label() {
+	function fresh_label(prefix="p") {
 		// existing = Object.keys(ED);
 		existing = links.map( l => l.label)
 		i = 1;
-		while("p"+i in existing) {
-			i++; 
-		}
-		return "p"+i;
+		while(existing.indexOf(prefix+i) >=0) i++;
+		return prefix+i;
 	}
 	function fresh_node_name(prefix="X") {
-		existing = N;
+		// existing = N;
+		existing = nodes.map(n => n.id);
 		i = 1;
-		while(prefix+i in existing) {
-			i++; 
-		}
+		while(existing.indexOf(prefix+i) >= 0) i++;
 		return prefix+i;
 	}
 	function new_link(src, tgt, label) {
@@ -405,12 +449,16 @@ $(function() {
 		ensure_multinode(tgt);
 		// simulation.nodes(nodes);
 		align_node_dom();
-		simulation.force("anotherlink").links(parentLinks);
+		// simulation.force("anotherlink").links(parentLinks);
 		
 		ED[label] = [src, tgt];
 		lobj = linkobject([label, [src,tgt]], links.length);
 		links.push(lobj);
-		simulation.force("link").links(links);
+		// simulation.force("link").links(links);
+		// linknodes = links.map(mk_linknode);
+		linknodes.push(mk_linknode(lobj));
+		simulation.nodes(nodes.concat(linknodes));
+		simulation.force("bipartite").links(mk_bipartite_links(links));
 
 		simulation.alpha(0.7).restart();
 		
@@ -426,7 +474,8 @@ $(function() {
 		align_node_dom();
 	}
 	function align_node_dom() {
-		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
+		// nodedata = svg.selectAll(".node").data(nodes, n => n.id);
+		nodedata = svg.selectAll(".node").data(nodes.concat(linknodes), n => n.id);
 
 			// .enter().append("g").classed("node", true);
 		newnodeGs = nodedata.enter()
@@ -445,8 +494,9 @@ $(function() {
 		nodedata.exit().each(remove_node)
 			.remove();
 		
-		linknodes = links.map(mk_linknode);
+		// linknodes = links.map(mk_linknode);
 		simulation.nodes(nodes.concat(linknodes));
+		// simulation.nodes(nodes);
 		simulation.restart();
 	}
 	function restyle_nodes() {
@@ -479,14 +529,18 @@ $(function() {
 			}
 		}
 		delete lookup[n.id];
-		// multis_to_remove.forEach(remove_node);
+		multis_to_remove.forEach(remove_node);
 	}
 	function remove_link( l ) {
-		delete ED[l.label];
-		const index = links.indexOf(l);
+		var index = links.indexOf(l);
 		if(index >= 0) {
 			links.splice(index,1);
 		}
+		index = linknodes.findIndex(ln => ln.link == l)
+		if(index >= 0) {
+			linknodes.splice(index,1);
+		}		
+		delete ED[l.label];
 	}
 		
 	canvas.addEventListener("dblclick", function(e) {
@@ -497,15 +551,21 @@ $(function() {
 			if(!pick(e))
 			setTimeout(function() {
 				let name = window.prompt("Enter A Variable Name", fresh_node_name());
-				new_node(name, e.x, e.y);
-				ontick();
+				existing = nodes.map(n => n.id);
+				if(name) {
+					if(existing.indexOf(name) >= 0) {
+						window.alert(`Variable name ${name} already taken.`);
+					} else {
+						new_node(name, e.x, e.y);
+						ontick();
+					}
+				}
 			}, 10);
 		}
 		
 		if(e.ctrlKey || e.metaKey) {
 		}
 	});
-	
 	canvas.addEventListener("click", function(e) {
 		// ADD NEW NODE
 		// if(e.ctrlKey || e.metaKey) {
@@ -528,18 +588,17 @@ $(function() {
 			obj = pick(e)
 			if(obj) {
 				if(!e.shiftKey)
-					nodes.forEach(n => {n.selected=false;});
-				obj.selected = true;
+					nodes.forEach(n => {if(n.id != obj.id) n.selected=false;});
+
+				// if(obj.selected) {
+				obj.selected = !obj.selected;
 				restyle_nodes();
 		 	}
 		}
 		// }
 	});
 
-	// svg.addEventListener("click", canvas_clicked);
-	
 	var temp_link = null;
-	// const mousenode = { id : "<MOUSE>", w}
 	
 	window.addEventListener("keydown", function(event){
 		console.log(event);
@@ -567,6 +626,11 @@ $(function() {
 			// links.push(temp_link);
 		}
 		else if (event.key == ' ') {
+			// simulation.alphaTarget(0.05).restart();
+			simulation.alpha(1).alphaTarget(0).restart();
+			
+			if(mode == 'move') {
+			}
 			if(mode == 'select') {
 				// TODO shift selection to backup selection (red color)
 			}
