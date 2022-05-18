@@ -42,6 +42,7 @@ let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
 
 
 const initw = 60, inith = 40;
+const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
 
 $(function() {
 	// resize to full screen
@@ -142,21 +143,23 @@ $(function() {
 
 		// let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
 		// let mid = midpt ? midpt : 
-		let midearly = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
+		let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
 		// console.log('ho', avgsrc,avgtgt, mid);
 		function shortener(s) {
-			return sqshortened_end(midearly, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
+			return sqshortened_end(mid, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
 		}
 		let avgsrcshortened = src.length == 0 ? 
 			shortener("") : scale(addv(... src.map(shortener)), 1 / src.length);
 		let avgtgtshortened = tgt.length == 0 ?
 			shortener("") : scale(addv(... tgt.map(shortener)), 1 / tgt.length);
-		// let midearly = mid;
+		let midearly = mid;
 		// mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
 		// 	.5*avgsrcshortened[1] + .5*avgtgtshortened[1] ];
 		let true_mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
 			.5*avgsrcshortened[1] + .5*avgtgtshortened[1] ];
-		let mid = midpt ? midpt : true_mid;
+		mid = midpt ? midpt : true_mid;
+		// mid = true_mid;
+		let delta = subv(mid, true_mid);
 		// let avgtgtshortened = addv(
 		// 	...tgt.map(t =>
 		// 		sqshortened_end(mid, vec2(lookup[t]), [lookup[t].w, lookup[t].h]))
@@ -178,19 +181,28 @@ $(function() {
 			// 		.8*avgsrcshortened[1] + mid[1]*(0.2),
 			// 		// lookup[s].x, lookup[s].y,
 			// 		mid[0], mid[1]);
+			// lpath.bezierCurveTo(
+			// 		// avgtgt[0], avgtgt[1],
+			// 		0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.9,
+			// 		0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.9,
+			// 		.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0] * 1.8,
+			// 		.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1] * 1.8,
+			// 		// lookup[s].x, lookup[s].y,
+			// 		mid[0], mid[1]);
 			lpath.bezierCurveTo(
 					// avgtgt[0], avgtgt[1],
-					0.2*midearly[0] + startpt[0]*(0.8),
-					0.2*midearly[1] + startpt[1]*(0.8),
-					.8*avgsrcshortened[0] + mid[0]*(0.2),
-					.8*avgsrcshortened[1] + mid[1]*(0.2),
+					0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.5,
+					0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.5,
+					.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0],
+					.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1],
 					// lookup[s].x, lookup[s].y,
 					mid[0], mid[1]);
 
 			// lpath.lineTo(mid[0], mid[1]);
 		});
 		tgt.forEach( function(t) {
-			lpath.moveTo( mid[0], mid[1] );
+			// lpath.moveTo( true_mid[0], true_mid[1] );
+			lpath.moveTo(...mid);
 			// lpath.quadraticCurveTo(avgtgt[0], avgtgt[1], lookup[t].x, lookup[t].y);
 			let endpt = shortener(t);
 			// console.log(mid, vec2(lookup[t]), endpt);
@@ -236,6 +248,12 @@ $(function() {
 		// context.setLineDash([]);
 
 		for( let l of links) {
+			context.lineWidth = 5;
+			context.strokeStyle = "white";
+			context.stroke(l.path2d);
+			
+			context.lineWidth = 1.5;
+			context.strokeStyle = "black";
 			context.stroke(l.path2d);
 			// context.lineWidth = 1;
 			// context.setLineDash([4,1]);
@@ -249,6 +267,12 @@ $(function() {
 		}
 		
 		if(temp_link) {
+			context.lineWidth = 3;
+			context.strokeStyle = "white";
+			context.stroke( compute_link_shape(temp_link.srcs, temp_link.tgts ))
+			
+			context.lineWidth = 1.5;
+			context.strokeStyle = "black";
 			context.stroke( compute_link_shape(temp_link.srcs, temp_link.tgts ))
 		}
 		
@@ -281,6 +305,8 @@ $(function() {
 				context.stroke();				
 			}
 		});
+		
+		//draw the linknodes 
 		// linknodes.forEach(function(n) {
 		// 	context.beginPath();
 		// 
@@ -314,8 +340,9 @@ $(function() {
 			// id: link.label+link.source+link.target
 			id: "ℓ"+link.label, 
 			link: link,
-			x: avg[0], y: avg[1], vx: 0, vy:0,
-			w : 10, h : 10,  display: false};
+			x: avg[0] + 10*Math.random()-5,
+			y: avg[1] + 10*Math.random()-5,
+			vx: 0, vy:0, w : 10, h : 10,  display: false};
 		return ob;
 	}
 	links = Object.entries(ED).map(linkobject);
@@ -331,8 +358,8 @@ $(function() {
 				// n.vx += sgn(avg[0] - n.x) * scale * 1
 				// n.vy += sgn(avg[1] - n.y) * scale * 1 
 				
-				n.vx += (avg[0] - n.x) * 0.3 * alpha;
-				n.vy += (avg[1] - n.y) * 0.3 * alpha;
+				n.vx += (avg[0] - n.x) * 0.5 * alpha;
+				n.vy += (avg[1] - n.y) * 0.5 * alpha;
 				
 				// n.vx += (avg[0] - n.x) * 0.3;
 				// n.vy += (avg[1] - n.y) * 0.3;
@@ -349,8 +376,8 @@ $(function() {
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
-			ln.vx += (ln.true_mid[0] - ln.x) * 0.55 *alpha;
-			ln.vy += (ln.true_mid[1] - ln.y) * 0.55 *alpha;
+			ln.vx += (ln.true_mid[0] - ln.x) * 0.35 *alpha;
+			ln.vy += (ln.true_mid[1] - ln.y) * 0.35 *alpha;
 		}
 	}
 
@@ -360,16 +387,27 @@ $(function() {
 		for( let l of links) {
 			let lname = "ℓ" + l.label;
 			
+			// let loops = l.srcs.filter(n => l.tgts.includes(n));
+			
 			// l.srcs.map( s =>  {source:s, target:lname})
 			for( let s of l.srcs) {
-				bipartite_links.push({ source: s, target: lname, nsibls: l.srcs.length});
+				bipartite_links.push({ 
+					source: s, target: lname, 
+					nsibls: l.srcs.length, 
+					isloop: l.tgts.includes(s)
+				});
 			}
 			for( let t of l.tgts) {
-				bipartite_links.push({ source: lname, target: t, nsibls: l.tgts.length });
+				bipartite_links.push({
+					source: lname, target: t, 
+					nsibls: l.tgts.length, 
+					isloop: l.srcs.includes(t) 
+				});
 			}
 		}
 		return bipartite_links;
 	}
+	window.mk_bipartite_links = mk_bipartite_links;
 	// TODO: Make this center force change on resize.
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
 	// simulation = d3.forceSimulation(nodes)
@@ -380,11 +418,17 @@ $(function() {
 		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
 		// 		.strength(0.3).distance(40).iterations(2))
 		.force("avgpos_align", multi_avgpos_alignment_force)
+		.force("charge", d3.forceManyBody()
+			// .strength(n => n.display ? -100 : 0))
+			.strength(n => n.link ? 0 : -120))
 		.force("midpt_align", midpoint_aligning_force)
-		.force("charge", d3.forceManyBody().strength(
-			n => n.display ? -100 : -100))
 		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
-			.strength(1).distance(l => 30*(l.nsibls+1) ).iterations(3))
+			.strength(1).distance(l => {
+				let optdist = (l.nsibls in OPT_DIST ? OPT_DIST[l.nsibls] : 30*l.nsibls) + sgn(l.isloop)*50;
+				// if( l.link.)
+				// console.log("Evaluating Distance Accessor.",optdist);
+				return optdist;
+			}).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 		// 		.strength(0.5).iterations(5))
 		.force("nointersect", d3.forceCollide().radius(
@@ -434,17 +478,18 @@ $(function() {
 		// existing = Object.keys(ED);
 		existing = links.map( l => l.label)
 		i = 1;
-		while(existing.indexOf(prefix+i) >=0) i++;
+		while(existing.includes(prefix+i)) i++;
 		return prefix+i;
 	}
 	function fresh_node_name(prefix="X") {
 		// existing = N;
 		existing = nodes.map(n => n.id);
 		i = 1;
-		while(existing.indexOf(prefix+i) >= 0) i++;
+		while(existing.includes(prefix+i)) i++;
 		return prefix+i;
 	}
 	function new_link(src, tgt, label) {
+		console.log("New Link: ", src, tgt, label);
 		ensure_multinode(src);
 		ensure_multinode(tgt);
 		// simulation.nodes(nodes);
@@ -453,6 +498,8 @@ $(function() {
 		
 		ED[label] = [src, tgt];
 		lobj = linkobject([label, [src,tgt]], links.length);
+		console.log(lobj);
+		console.log(mk_linknode(lobj));
 		links.push(lobj);
 		// simulation.force("link").links(links);
 		// linknodes = links.map(mk_linknode);
@@ -474,8 +521,8 @@ $(function() {
 		align_node_dom();
 	}
 	function align_node_dom() {
-		// nodedata = svg.selectAll(".node").data(nodes, n => n.id);
-		nodedata = svg.selectAll(".node").data(nodes.concat(linknodes), n => n.id);
+		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
+		// nodedata = svg.selectAll(".node").data(nodes.concat(linknodes), n => n.id);
 
 			// .enter().append("g").classed("node", true);
 		newnodeGs = nodedata.enter()
@@ -496,6 +543,8 @@ $(function() {
 		
 		// linknodes = links.map(mk_linknode);
 		simulation.nodes(nodes.concat(linknodes));
+		simulation.force("bipartite").links(mk_bipartite_links(links));
+
 		// simulation.nodes(nodes);
 		simulation.restart();
 	}
@@ -509,39 +558,70 @@ $(function() {
 			.classed("selected", n => n.selected );
 	}
 	function remove_node(n) {
-		for(let l of links) {
-			if(l.source.id == n.id || l.target.id == n.id)
+		// console.log("removing node", n);
+		for(let i = 0; i < links.length; i++) {
+			l = links[i];
+			// console.log("... |link ", l.label, l.source, l.target,
+			 	// " --> remove? ",l.srcs.indexOf(n.id) >= 0 || l.tgts.indexOf(n.id) >= 0);
+			// This test only works if this is the link object in a real force!!
+			// if(l.source.id == n.id || l.target.id == n.id)
+			// if(l.source == n.id || l.target == n.id)
+			if(l.srcs.includes(n.id) || l.tgts.includes(n.id)) {
 				remove_link(l);
-		}
-		
-		let multis_to_remove = [];
-		for(let i = 0; i < parentLinks.length; i++) {
-			l = parentLinks[i];
-			if(l.source.id == n.id || l.target.id == n.id) {
-				parentLinks.splice(i,1);
-
-				cpt_idx = l.source.components.indexOf(n.id);
-				l.source.components.splice(cpt_idx,1);
-				// if( l.source.components.length == 0)
-				ensure_multinode(l.source.components);
-				multis_to_remove.push(l.source);
 				i--;
 			}
+		}
+		// simulation.force("bipartite").links(mk_bipartite_links(links));
+		
+		let multis_to_remove = [];
+		// for(let i = 0; i < parentLinks.length; i++) {
+		// 	l = parentLinks[i];
+		// 	if(l.source.id == n.id || l.target.id == n.id) {
+		// 		parentLinks.splice(i,1);
+		// 
+		// 		cpt_idx = l.source.components.indexOf(n.id);
+		// 		l.source.components.splice(cpt_idx,1);
+		// 		// if( l.source.components.length == 0)
+		// 		ensure_multinode(l.source.components);
+		// 		multis_to_remove.push(l.source);
+		// 		i--;
+		// 	}
+		// }
+		for(let i = 0; i < nodes.length; i++) {
+			let m = nodes[i];
+			if(m == n) { // might already be gone, but make sure.
+				nodes.splice(i,1); i--; continue;
+			}
+			if(m.components) { // remove n from other multinodes, 
+				// ... or more accurately, delete them and create new,
+				// smaller multi-nodes.
+				let idx = m.components.indexOf(n.id)
+				if(idx < 0) continue;
+				m.components.splice(idx,1);
+				ensure_multinode(m.components);
+				multis_to_remove.push(m);
+			}
+
 		}
 		delete lookup[n.id];
 		multis_to_remove.forEach(remove_node);
 	}
 	function remove_link( l ) {
+		console.log("removing link ", l)
 		var index = links.indexOf(l);
 		if(index >= 0) {
 			links.splice(index,1);
 		}
+		else console.warn("link "+l.label+" not found for removal");
 		index = linknodes.findIndex(ln => ln.link == l)
 		if(index >= 0) {
-			linknodes.splice(index,1);
-		}		
+			linknodes.splice(index, 1);
+		}
+		else console.warn("linknode corresponding to "+l.label+" not found for removal");
+
 		delete ED[l.label];
 	}
+	window.remove_link = remove_link;
 		
 	canvas.addEventListener("dblclick", function(e) {
 		if (true) { // mode guard later 
@@ -553,7 +633,7 @@ $(function() {
 				let name = window.prompt("Enter A Variable Name", fresh_node_name());
 				existing = nodes.map(n => n.id);
 				if(name) {
-					if(existing.indexOf(name) >= 0) {
+					if(existing.includes(name)) {
 						window.alert(`Variable name ${name} already taken.`);
 					} else {
 						new_node(name, e.x, e.y);
@@ -640,6 +720,7 @@ $(function() {
 			// nodedata.
 			// 	filter(n => n.selected).remove();
 			// links = links.filter(l => l.)
+			simulation.stop();
 			nodes = nodes.filter(n => !n.selected);
 			align_node_dom();
 		}
@@ -793,6 +874,9 @@ function sqshortened_end(from, to, [w,h], extra=0) {
 	delta = subv(to,from);
 	h = h + extra;
 	w = w + extra;
+	if(delta[0] == 0 && delta[1] == 0) {
+		return addv(from, [w/2, h/2]);
+	}
 	sqshortdelta = [
 		delta[0] - magclamp(delta[0] * h / Math.abs(delta[1]), w)/2,
 		delta[1] - magclamp(delta[1] * w / Math.abs(delta[0]), h)/2];
