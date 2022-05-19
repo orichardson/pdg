@@ -48,6 +48,7 @@ $(function() {
 	// resize to full screen
 	let canvas = document.getElementById("canvas"),
 		svg = d3.select("#svg");
+	let context = canvas.getContext("2d");
 
 	function resizeCanvas() {
 		canvas.width = window.innerWidth;
@@ -72,11 +73,11 @@ $(function() {
 	var mouse_pt = [0,0];
 	
 
-	let context = canvas.getContext("2d");
 	lookup = [];
 	// TODO make this a let later
 	nodes = N.map( function(varname) {
-		let ob = {"id": varname, "w" : initw, "h": inith, "display": true};
+		let ob = {id: varname, values: [0,1],
+			w : initw, h: inith, display: true};
 		lookup[varname] = ob;
 		return ob;
 	});
@@ -126,7 +127,8 @@ $(function() {
 		return   [ d3.mean(nodenames.map(v => lookup[v].x)),
 				   d3.mean(nodenames.map(v => lookup[v].y)) ];
 	}
-	function compute_link_shape( src, tgt, midpt=undefined, return_mid=false) {
+	function compute_link_shape( src, tgt, midpt=undefined, return_mid=false, arrwidth=undefined) {
+		if(arrwidth == undefined) arrwidth=10;
 		// let srcnode = lookup[src.join(",")];
 		// let avgsrc = vec2(srcnode);
 		// if( src.length > 0 ) {
@@ -210,7 +212,7 @@ $(function() {
 
 			// lpath.quadraticCurveTo(avgtgtshortened[0], avgtgtshortened[1], endpt[0], endpt[1]);
 			lpath.lineTo(...endpt);
-			let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, 10);
+			let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, arrwidth);
 			lpath.moveTo(...endpt);
 			lpath.quadraticCurveTo(armid0[0], armid0[1], ar0[0], ar0[1]);
 			lpath.moveTo(...endpt);
@@ -227,7 +229,7 @@ $(function() {
 		// }
 		for (let ln of linknodes) {
 			let l = ln.link;
-			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
+			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true, (l.lw|2)*2+4);
 		}
 		
 		nodes.forEach(function(n) {
@@ -245,14 +247,18 @@ $(function() {
 		
 		context.lineWidth = 1.5;
 		context.strokeStyle = "black";
+
+		context.lineCap = 'round';
 		// context.setLineDash([]);
 
 		for( let l of links) {
-			context.lineWidth = 5;
+			// let lw = l.hasAttribute('lw')? l.lw : 2;
+			let lw = l.lw | 2;
+			context.lineWidth = lw * 1.2 + 3;
 			context.strokeStyle = "white";
 			context.stroke(l.path2d);
 			
-			context.lineWidth = 1.5;
+			context.lineWidth =  lw;
 			context.strokeStyle = "black";
 			context.stroke(l.path2d);
 			// context.lineWidth = 1;
@@ -275,7 +281,8 @@ $(function() {
 			context.strokeStyle = "black";
 			context.stroke( compute_link_shape(temp_link.srcs, temp_link.tgts ))
 		}
-		
+		// context.restore();
+		// context.save();
 		// Draw Selection Rectangle
 		context.globalAlpha = 0.2;
 		if( mode == "select" && select_rect_start && select_rect_end ) {
@@ -292,6 +299,7 @@ $(function() {
 		
 		/// Draw the invisible product nodes + make sure no node goes off screen.
 		context.globalAlpha = 0.5;
+		context.lineWidth = 2;
 		nodes.forEach(function(n) {
 			if(! n.display ) {
 				context.beginPath();
@@ -334,6 +342,7 @@ $(function() {
 			tgts : tgt
 		}
 	}
+	links = Object.entries(ED).map(linkobject);
 	function mk_linknode(link) {
 		let avg = avgpos(...link.srcs, ...link.tgts)
 		let ob = {
@@ -345,9 +354,7 @@ $(function() {
 			vx: 0, vy:0, w : 10, h : 10,  display: false};
 		return ob;
 	}
-	links = Object.entries(ED).map(linkobject);
 	
-	window.avgpos = avgpos;
 	function multi_avgpos_alignment_force(alpha) {
 		for(let n of nodes) {
 			if (n.components && n.components.length > 1) {
@@ -424,6 +431,7 @@ $(function() {
 		.force("midpt_align", midpoint_aligning_force)
 		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 			.strength(1).distance(l => {
+				if(l.arclen) return l.arclen;
 				let optdist = (l.nsibls in OPT_DIST ? OPT_DIST[l.nsibls] : 30*l.nsibls) + sgn(l.isloop)*50;
 				// if( l.link.)
 				// console.log("Evaluating Distance Accessor.",optdist);
@@ -448,7 +456,7 @@ $(function() {
 	setTimeout(() => { simulation.restart(); }, 100);
 
 
-	function pick(pt) {
+	function pickN(pt) {
 		for(let objn of nodes) {
 			adx = Math.abs(objn.x - pt.x);
 			ady = Math.abs(objn.y - pt.y);
@@ -457,6 +465,15 @@ $(function() {
 				return objn;
 		}
 	}
+	function pickL(pt, extra_lw=6) {
+		context.save();
+		for(let l of links) {
+			context.lineWidth = extra_lw + (l.lw | 2);
+			if( context.isPointInStroke(l.path2d, pt.x, pt.y) )
+				return l;
+		}
+		context.restore();
+	}
 
 	d3.select(canvas)
 	    .call(d3.drag()
@@ -464,7 +481,11 @@ $(function() {
 	        .subject(function(event) {
 					if (mode == 'select') return true;
 					if (mode == 'draw' && temp_link) return undefined;
-					else return pick(event);
+					else {
+						let o = pickN(event);
+						if(o) return o;
+						return pickL(event);
+					}
 				})
 	        .on("start", dragstarted)
 	        .on("drag", dragged)
@@ -519,6 +540,7 @@ $(function() {
 		nodes.push(ob);
 		lookup[vname] = ob;
 		align_node_dom();
+		return ob;
 	}
 	function align_node_dom() {
 		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
@@ -628,7 +650,7 @@ $(function() {
 			// TODO guards: not already on top of a node. Picks none. 
 			// new node.
 			
-			if(!pick(e))
+			if(!pickN(e))
 			setTimeout(function() {
 				let name = window.prompt("Enter A Variable Name", fresh_node_name());
 				existing = nodes.map(n => n.id);
@@ -652,7 +674,7 @@ $(function() {
 		console.log("click event");
 	
 		if( temp_link ) {
-			newtgt = pick(e);
+			newtgt = pickN(e);
 			if(newtgt) {
 				if(!e.shiftKey) {
 					new_tgts = temp_link.tgts.slice(1);
@@ -665,7 +687,7 @@ $(function() {
 				}
 			}	
 		} else if(mode == 'move') {
-			obj = pick(e)
+			obj = pickN(e)
 			if(obj) {
 				if(!e.shiftKey)
 					nodes.forEach(n => {if(n.id != obj.id) n.selected=false;});
@@ -734,26 +756,25 @@ $(function() {
 	});
 	
 	
-	window.addEventListener("mousewheel", function(e) {
-		console.log(e.wheelDelta );
-	});
-	window.addEventListener("wheel", function(e) {
-		console.log(e.wheelDelta );
-	});
-	canvas.addEventListener("mousewheel", function(e) {
-		console.log(e.wheelDelta );
+	canvas.addEventListener("wheel", function(e) {
+		// console.log("canvas", e.wheelDelta );
+		lover = pickL(e, width=10);
+		
+		//# code to change LINE WIDTH
+		// if(lover.lw == undefined) lover.lw=2;
+		// lover.lw = (lover.lw + sgn(e.wheelDelta) );
+		
+		
+		ontick();
+		console.log(lover);
 	});
 	
 	window.addEventListener("mousemove", function(e) {
 		// mouse_pt = [e.x, e.y];
 		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:5,h:5};
 		if(temp_link) redraw();
+		// mm
 		
-		if ( mode == '' ) {
-			// TODO make it so that, after t is pressed, there's
-			// a phantom node that follows the cursor, until click.
-			// nodes
-		}
 		if ( mode == 'move' /* && gpressed */ ) {
 			// TODO move selection, like ondrag below
 		}
@@ -772,8 +793,12 @@ $(function() {
 			ontick();
 		}
 		else if (mode == 'draw') {
-			console.log(event.subject);
-			temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]], undefined);
+			// console.log(event.subject);
+			if(event.subject.source)  { // if it's an edge
+				temp_link = linkobject(['<TEMPORARY>', [event.subject.srcs, ["<MOUSE>"].concat(event.subject.tgts)]]);
+			} else { // drag.subject is a node.
+				temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]]);
+			}			
 			ontick();
 		}
 	}
@@ -816,7 +841,7 @@ $(function() {
 					}
 				}
 			}
-			finalnode = pick(event);
+			finalnode = pickN(event);
 			if(finalnode) finalnode.selected = true;
 			restyle_nodes();
 			
@@ -824,10 +849,33 @@ $(function() {
 			select_rect_end = null;
 			ontick();
 		} else if (mode == 'draw') {
-			pickobj = pick(event);
-			if(pickobj) {
-				new_link(temp_link.srcs, [pickobj.id], fresh_label());
+			let newtgts = [], newsrcs = [];
+			
+			let pickobj = pickN(event);
+			if( pickobj ) {
+				newtgts.push(pickobj.id);
+			} else {
+				pickl = pickL(event, 25);
+				if(pickl) {
+					newsrcs.push(...pickl.srcs);
+					newtgts.push(...pickl.tgts);
+					remove_link(pickl);
+				} else {
+					//create new edge? Or abandon? 
+					pickobj = new_node(fresh_node_name(), event.x, event.y);
+					newtgts.push(pickobj.id);
+				}
 			}
+			if(event.subject.source) { // event source was a link
+				newtgts.push(...event.subject.tgts);
+				remove_link(event.subject);
+			}
+
+
+			// let newtgts = [pickobj.id] // do I maybe want to do this at end?
+		
+			new_link(temp_link.srcs.concat(newsrcs), newtgts, fresh_label());
+
 			temp_link = null;
 			ontick();
 		}

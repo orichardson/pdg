@@ -8,15 +8,20 @@ title: PDG Viz Desires
  </style>
 
 # Queue
-  * draw labels
-  * new "node" for each hypergraph
-	  * repulsion between edges
-  * add "new node" tool
-  * add "new hyperedge" tool
-  * selection: (nodes + edges)
-	  * selection operators: union, subtraction
-	  * drawing selection
-	  * painting selection
+  * Actions + Keystroke Display
+  * visual
+	  * draw labels
+	  * select edges
+	  * add to hyperedges w/drawing
+	  * change \delta + length parameters of hyperedges
+	  * make self-edges prettier
+  * Edge Focus
+	  * cpd editor
+  * Node focus
+	  * value editor + display
+  * import / export
+  * UNDO
+
 
 
 ## Functionality Wishlist
@@ -27,7 +32,6 @@ title: PDG Viz Desires
 	 - Other Inputs (far future)
 		 - Draw from Tablet
 		 - Parse from image
-		 -   
 
  - **Queries** 
 	 - inconsistency
@@ -42,3 +46,11 @@ title: PDG Viz Desires
 
 * [X]- bounding box for nodes
 * [X]- edge labels in hypergraph
+* [X]- new "node" for each hypergraph
+  * [X]- repulsion between edges
+* [X]- add "new node" tool
+* [X]- add "new hyperedge" tool
+* [X]- selection: (nodes + edges)
+  * [X]- selection operators: union, subtraction
+  * [X]- drawing selection
+  * [X]- painting selection
