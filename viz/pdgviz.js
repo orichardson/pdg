@@ -733,6 +733,17 @@ $(function() {
 
 	});
 	
+	
+	window.addEventListener("mousewheel", function(e) {
+		console.log(e.wheelDelta );
+	});
+	window.addEventListener("wheel", function(e) {
+		console.log(e.wheelDelta );
+	});
+	canvas.addEventListener("mousewheel", function(e) {
+		console.log(e.wheelDelta );
+	});
+	
 	window.addEventListener("mousemove", function(e) {
 		// mouse_pt = [e.x, e.y];
 		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:5,h:5};
