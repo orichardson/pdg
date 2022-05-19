@@ -70,7 +70,6 @@ $(function() {
 
 
 	var select_rect_end,  select_rect_start;
-	var mouse_pt = [0,0];
 	
 
 	lookup = [];
@@ -118,7 +117,24 @@ $(function() {
 		.attr('rx', 15);
 	gnode.append("text").text(n => n.id);
 	gnode.filter( n => ! n.display).attr('display', 'none')
+	// align_node_dom();
 
+	//## Now, make the links.
+	function linkobject([label, [src,tgt]], i) {
+		// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
+		return {
+			source: src.join(","), 
+			target: tgt.join(","), 
+			index: i, 
+			label: label,
+			display: true,
+			srcs : src,
+			tgts : tgt
+		}
+	}
+	links = Object.entries(ED).map(linkobject);
+	
+	
 	//##  Next, Updating + Preparing shapes for drawing.  
 	//##  But first, some helpful functions.
 	function avgpos( ... nodenames ) {
@@ -330,19 +346,7 @@ $(function() {
 		context.restore();
 	}
 	
-	function linkobject([label, [src,tgt]], i) {
-		// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
-		return {
-			source: src.join(","), 
-			target: tgt.join(","), 
-			index: i, 
-			label: label,
-			display: true,
-			srcs : src,
-			tgts : tgt
-		}
-	}
-	links = Object.entries(ED).map(linkobject);
+	
 	function mk_linknode(link) {
 		let avg = avgpos(...link.srcs, ...link.tgts)
 		let ob = {
@@ -480,12 +484,18 @@ $(function() {
 	        .container(canvas)
 	        .subject(function(event) {
 					if (mode == 'select') return true;
-					if (mode == 'draw' && temp_link) return undefined;
-					else {
-						let o = pickN(event);
-						if(o) return o;
-						return pickL(event);
+					// if (mode == 'draw' && temp_link) return undefined;
+					// else {
+					let o = pickN(event);
+					if(o) return o;
+					let l = pickL(event);
+					if(l) return l;
+					
+					if(mode == 'draw') {
+						return lookup[''];
+						// return linkobject(['templink', [[],[]]]);
 					}
+					// }
 				})
 	        .on("start", dragstarted)
 	        .on("drag", dragged)
@@ -563,12 +573,14 @@ $(function() {
 		nodedata.exit().each(remove_node)
 			.remove();
 		
-		// linknodes = links.map(mk_linknode);
-		simulation.nodes(nodes.concat(linknodes));
-		simulation.force("bipartite").links(mk_bipartite_links(links));
+		if (typeof simulation != 'undefined') {
+			// linknodes = links.map(mk_linknode);
+			simulation.nodes(nodes.concat(linknodes));
+			simulation.force("bipartite").links(mk_bipartite_links(links));
 
-		// simulation.nodes(nodes);
-		simulation.restart();
+			// simulation.nodes(nodes);
+			simulation.restart();
+		}
 	}
 	function restyle_nodes() {
 		/*** Now for some SVG operations. ***/
@@ -848,7 +860,7 @@ $(function() {
 			select_rect_start = null;
 			select_rect_end = null;
 			ontick();
-		} else if (mode == 'draw') {
+		} else if (mode == 'draw' && temp_link) {
 			let newtgts = [], newsrcs = [];
 			
 			let pickobj = pickN(event);

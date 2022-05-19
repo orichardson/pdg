@@ -21,14 +21,17 @@ title: PDG Viz Desires
 	  * value editor + display
   * import / export
   * UNDO
+  * Multi-PDG
+	  * Nested borders (Compress full PDGs as nodes + folding)
+	  * Split and merge functionality
+	  * Move entire PDGs around screen at once (nested SVG <g>'s)
+  * Refactor drawing modes
 
 
 
 ## Functionality Wishlist
 
  - **Modeling Tool**
-	 - WEB
-		 - 
 	 - Other Inputs (far future)
 		 - Draw from Tablet
 		 - Parse from image
