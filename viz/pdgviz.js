@@ -411,7 +411,8 @@ $(function() {
 			// let loops = l.srcs.filter(n => l.tgts.includes(n));
 			
 			// l.srcs.map( s =>  {source:s, target:lname})
-			let delta = l.tgts.length == 0? -1 : 0;
+			// let delta = l.tgts.length == 0? -1 : 0;
+			let delta = 0;
 			for( let s of l.srcs) {
 				bipartite_links.push({ 
 					source: s, target: lname, 
@@ -419,7 +420,7 @@ $(function() {
 					isloop: l.tgts.includes(s)
 				});
 			}
-			delta = l.srcs.length == 0 ?  -1 : 0;
+			// delta = l.srcs.length == 0 ?  -1 : 0;
 			for( let t of l.tgts) {
 				bipartite_links.push({
 					source: lname, target: t, 
