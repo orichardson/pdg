@@ -42,7 +42,8 @@ let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
 
 
 const initw = 60, inith = 40;
-const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
+// const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
+const OPT_DIST = {0 : 165, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
 
 $(function() {
 	// resize to full screen
@@ -88,7 +89,9 @@ $(function() {
 	function ensure_multinode(multi) {
 		s = multi.join(',')
 		if( ! nodes.find(n => n.id == s )) {
-			let ob = {id:s, w:6, h:6, display: false,
+			let ob = {id:s, 
+				// w:6, h:6, display: false,
+				w:2, h:2, display: false,
 				components: multi,
 			 	vx:0.0, vy:0.0};
 			
@@ -123,15 +126,21 @@ $(function() {
 	function linkobject([label, [src,tgt]], i) {
 		// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
 		return {
+			// source + target useful for using as actual force links
 			source: src.join(","), 
 			target: tgt.join(","), 
 			index: i, 
 			label: label,
-			display: true,
 			srcs : src,
-			tgts : tgt
+			tgts : tgt,
+			display: true,
+			//## Added Later:
+			// path2d, lw, dist
+			//## Actual Data
+			cpd : null
 		}
 	}
+	window.linkobject = linkobject;
 	links = Object.entries(ED).map(linkobject);
 	
 	
@@ -331,17 +340,17 @@ $(function() {
 		});
 		
 		//draw the linknodes 
-		// linknodes.forEach(function(n) {
-		// 	context.beginPath();
-		// 
-		// 	if( n.selected )
-		// 		context.strokeStyle="#1AE";
-		// 	else context.strokeStyle="#A4C";
-		// 
-		// 	context.moveTo(n.x, n.y);
-		// 	context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
-		// 	context.stroke();				
-		// });
+		linknodes.forEach(function(n) {
+			context.beginPath();
+		
+			if( n.selected )
+				context.strokeStyle="#1AE";
+			else context.strokeStyle="#A4C";
+		
+			context.moveTo(n.x, n.y);
+			context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
+			context.stroke();				
+		});
 		context.globalAlpha = 1;
 		context.restore();
 	}
@@ -384,6 +393,7 @@ $(function() {
 	function midpoint_aligning_force(alpha) {
 		for (let ln of linknodes) {
 			let l = ln.link;
+			if(l.srcs.length ==0) continue;
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
@@ -401,17 +411,19 @@ $(function() {
 			// let loops = l.srcs.filter(n => l.tgts.includes(n));
 			
 			// l.srcs.map( s =>  {source:s, target:lname})
+			let delta = l.tgts.length == 0? -1 : 0;
 			for( let s of l.srcs) {
 				bipartite_links.push({ 
 					source: s, target: lname, 
-					nsibls: l.srcs.length, 
+					nsibls: l.srcs.length + delta, 
 					isloop: l.tgts.includes(s)
 				});
 			}
+			delta = l.srcs.length == 0 ?  -1 : 0;
 			for( let t of l.tgts) {
 				bipartite_links.push({
 					source: lname, target: t, 
-					nsibls: l.tgts.length, 
+					nsibls: l.tgts.length + delta, 
 					isloop: l.srcs.includes(t) 
 				});
 			}
@@ -453,55 +465,16 @@ $(function() {
 	simulation.alphaDecay(0.05);
 		
 	setTimeout(function(){
-		for (const node of nodes) {
+		console.log(canvas.width, canvas.height);
+		for (const node of nodes.concat(linknodes)) {
 			node.x = node.x * 10.8 + canvas.width/2;
 			node.y = node.y * 10.8 + canvas.height/2;
-		} ontick();} , 1);
-	setTimeout(() => { simulation.restart(); }, 100);
+		} 
+		ontick(); simulation.restart(); } , 10);
+	// setTimeout(() => { simulation.restart(); }, 200);
 
 
-	function pickN(pt) {
-		for(let objn of nodes) {
-			adx = Math.abs(objn.x - pt.x);
-			ady = Math.abs(objn.y - pt.y);
 
-			if(adx <  objn.w/2 && ady < objn.h/2)
-				return objn;
-		}
-	}
-	function pickL(pt, extra_lw=6) {
-		context.save();
-		for(let l of links) {
-			context.lineWidth = extra_lw + (l.lw | 2);
-			if( context.isPointInStroke(l.path2d, pt.x, pt.y) )
-				return l;
-		}
-		context.restore();
-	}
-
-	d3.select(canvas)
-	    .call(d3.drag()
-	        .container(canvas)
-	        .subject(function(event) {
-					if (mode == 'select') return true;
-					// if (mode == 'draw' && temp_link) return undefined;
-					// else {
-					let o = pickN(event);
-					if(o) return o;
-					let l = pickL(event);
-					if(l) return l;
-					
-					if(mode == 'draw') {
-						return lookup[''];
-						// return linkobject(['templink', [[],[]]]);
-					}
-					// }
-				})
-	        .on("start", dragstarted)
-	        .on("drag", dragged)
-	        .on("end", dragended)
-		);
-	
 	function set_mode(mode) {
 		$("#drag-mode-toolbar button[data-mode='"+mode+"']").click();
 	}
@@ -520,7 +493,6 @@ $(function() {
 		return prefix+i;
 	}
 	function new_link(src, tgt, label) {
-		console.log("New Link: ", src, tgt, label);
 		ensure_multinode(src);
 		ensure_multinode(tgt);
 		// simulation.nodes(nodes);
@@ -529,8 +501,6 @@ $(function() {
 		
 		ED[label] = [src, tgt];
 		lobj = linkobject([label, [src,tgt]], links.length);
-		console.log(lobj);
-		console.log(mk_linknode(lobj));
 		links.push(lobj);
 		// simulation.force("link").links(links);
 		// linknodes = links.map(mk_linknode);
@@ -656,7 +626,168 @@ $(function() {
 		delete ED[l.label];
 	}
 	window.remove_link = remove_link;
+	
+	function pickN(pt) {
+		for(let objn of nodes) {
+			adx = Math.abs(objn.x - pt.x);
+			ady = Math.abs(objn.y - pt.y);
+
+			if(adx <  objn.w/2 && ady < objn.h/2)
+				return objn;
+		}
+	}
+	function picksL(pt, l, extra_lw) {
+		context.save();
+		context.lineWidth = extra_lw + (l.lw | 2);
+		let b = context.isPointInStroke(l.path2d, pt.x, pt.y);
+		context.restore();
+		return b;
+	}
+	function pickL(pt, extra_lw=6) {
+		context.save();
+		for(let l of links) {
+			context.lineWidth = extra_lw + (l.lw | 2);
+			if( context.isPointInStroke(l.path2d, pt.x, pt.y) ) {
+				context.restore();
+				return l;
+			}
+		}
+		context.restore();
+	}
+	
+	var temp_link = null;	
+	var popup_process = null;
+	var popped_up_link = null;
+
+	d3.select(canvas)
+		.call(d3.drag()
+			.container(canvas)
+			.subject(function(event) {
+					// console.log("drag.subject passed : ", event)
+					if (mode == 'select') return true;
+					// if (mode == 'draw' && temp_link) return undefined;
+					// else {
+					let o = pickN(event);
+					if(o) return o;
+					let l = pickL(event);
+					if(l) return l;
+					
+					if(mode == 'draw') {
+						// return lookup[''];
+						let lo = linkobject(['templink', [[],[]]]);
+						return lo;
+					}
+					// }
+				})
+			.on("start", dragstarted)
+			.on("drag", dragged)
+			.on("end", dragended)
+		);
+	function dragstarted(event) {
+		if(popup_process) clearTimeout(popup_process);
+		if(popped_up_link){
+			delete popped_up_link.lw;
+			ontick();
+		}
+		if(mode == 'move') {
+			if (!event.active) simulation.alphaTarget(0.5).restart();
+			event.subject.fx = event.subject.x;
+			event.subject.fy = event.subject.y;
+		}
+		else if (mode == 'select') {
+			select_rect_start = vec2(event);
+			select_rect_end = vec2(event);
+			ontick();
+		}
+		else if (mode == 'draw') {
+
+			if(event.subject.source != undefined)  { // if it's an edge
+				temp_link = linkobject(['<TEMPORARY>', [event.subject.srcs, ["<MOUSE>"].concat(event.subject.tgts)]]);
+			} else { // drag.subject is a node.
+				temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]]);
+			}
+			ontick();
+		}
+	}
+	function dragged(event) {
+		if(mode == 'move') {
+			event.subject.fx = event.x;
+			event.subject.fy = event.y;
+		} 
+		else if (mode == 'select') {
+			select_rect_end = vec2(event);
+			ontick();
+		}
+		else if (mode == 'draw') {
+			// mouse_pt = vec2(event);
+			lookup["<MOUSE>"] = {x: event.x, y:event.y, w:5,h:5};
+			// ontick();
+			redraw();
+		}
+	}
+	function dragended(event) {
+		if(mode == 'move') {
+			if (!event.active) simulation.alphaTarget(0);
+			event.subject.fx = null;
+			event.subject.fy = null;
+		}
+		else if (mode == 'select') {
+			let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
+			let xmax = xmin + w, 
+				ymax = ymin + h;
+
+			for(let objn of nodes) {
+				if (objn.x >= xmin && objn.x <= xmax && objn.y >= ymin && objn.y <= ymax) {
+					objn.selected = true;
+				} else {
+					// console.log(event, event.sourceEvent.ctrlKey, event.sourceEvent.shiftKey);
+					if(! event.sourceEvent.shiftKey && objn.selected ) {
+						// 0 -> 0 (unselected); 1 -> 2 (demote primary selection); (2 -> 1)
+						objn.selected = false;
+					}
+				}
+			}
+			finalnode = pickN(event);
+			if(finalnode) finalnode.selected = true;
+			restyle_nodes();
+			
+			select_rect_start = null;
+			select_rect_end = null;
+			ontick();
+		} else if (mode == 'draw' && temp_link) {
+			let newtgts = [], newsrcs = [];
+			
+			let pickobj = pickN(event);
+			if( pickobj ) {
+				newtgts.push(pickobj.id);
+			} else {
+				pickl = pickL(event, 25);
+				if(pickl) {
+					newsrcs.push(...pickl.srcs);
+					newtgts.push(...pickl.tgts);
+					remove_link(pickl);
+				} else {
+					//create new edge? Or abandon? 
+					pickobj = new_node(fresh_node_name(), event.x, event.y);
+					newtgts.push(pickobj.id);
+				}
+			}
+			if(event.subject.source != undefined) { // event source was a link
+				newtgts.push(...event.subject.tgts);
+				remove_link(event.subject);
+			}
+
+
+			// let newtgts = [pickobj.id] // do I maybe want to do this at end?
 		
+			new_link(temp_link.srcs.concat(newsrcs), newtgts, fresh_label());
+
+			temp_link = null;
+			ontick();
+		}
+	}
+	
+	
 	canvas.addEventListener("dblclick", function(e) {
 		if (true) { // mode guard later 
 			// TODO guards: not already on top of a node. Picks none. 
@@ -712,8 +843,6 @@ $(function() {
 		// }
 	});
 
-	var temp_link = null;
-	
 	window.addEventListener("keydown", function(event){
 		console.log(event);
 		
@@ -766,11 +895,9 @@ $(function() {
 		}
 
 	});
-	
-	
 	canvas.addEventListener("wheel", function(e) {
 		// console.log("canvas", e.wheelDelta );
-		lover = pickL(e, width=10);
+		// lover = pickL(e, width=10);
 		
 		//# code to change LINE WIDTH
 		// if(lover.lw == undefined) lover.lw=2;
@@ -780,12 +907,28 @@ $(function() {
 		ontick();
 		console.log(lover);
 	});
-	
 	window.addEventListener("mousemove", function(e) {
 		// mouse_pt = [e.x, e.y];
 		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:5,h:5};
 		if(temp_link) redraw();
-		// mm
+		
+		if(popped_up_link && !picksL(e, popped_up_link, 10)) {
+			delete popped_up_link.lw;
+			ontick();
+		}
+		
+		if(popup_process) clearTimeout(popup_process);
+		
+		popup_process = setTimeout(function(){
+			let l = pickL(e, 10);
+			popped_up_link = l;
+
+			if(l) {
+				l.lw = 5;
+				ontick();
+			}
+		}, 100);
+
 		
 		if ( mode == 'move' /* && gpressed */ ) {
 			// TODO move selection, like ondrag below
@@ -793,105 +936,7 @@ $(function() {
 	})
 
 
-	function dragstarted(event) {
-		if(mode == 'move') {
-			if (!event.active) simulation.alphaTarget(0.5).restart();
-			event.subject.fx = event.subject.x;
-			event.subject.fy = event.subject.y;
-		}
-		else if (mode == 'select') {
-			select_rect_start = vec2(event);
-			select_rect_end = vec2(event);
-			ontick();
-		}
-		else if (mode == 'draw') {
-			// console.log(event.subject);
-			if(event.subject.source)  { // if it's an edge
-				temp_link = linkobject(['<TEMPORARY>', [event.subject.srcs, ["<MOUSE>"].concat(event.subject.tgts)]]);
-			} else { // drag.subject is a node.
-				temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]]);
-			}			
-			ontick();
-		}
-	}
-
-	function dragged(event) {
-		if(mode == 'move') {
-			event.subject.fx = event.x;
-			event.subject.fy = event.y;
-		} 
-		else if (mode == 'select') {
-			select_rect_end = vec2(event);
-			ontick();
-		}
-		else if (mode == 'draw') {
-			ontick();
-			// mouse_pt = vec2(event);
-			lookup["<MOUSE>"] = {x: event.x, y:event.y, w:5,h:5};
-		}
-	}
-
-	function dragended(event) {
-		if(mode == 'move') {
-			if (!event.active) simulation.alphaTarget(0);
-			event.subject.fx = null;
-			event.subject.fy = null;
-		}
-		else if (mode == 'select') {
-			let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
-			let xmax = xmin + w, 
-				ymax = ymin + h;
-
-			for(let objn of nodes) {
-				if (objn.x >= xmin && objn.x <= xmax && objn.y >= ymin && objn.y <= ymax) {
-					objn.selected = true;
-				} else {
-					// console.log(event, event.sourceEvent.ctrlKey, event.sourceEvent.shiftKey);
-					if(! event.sourceEvent.shiftKey && objn.selected ) {
-						// 0 -> 0 (unselected); 1 -> 2 (demote primary selection); (2 -> 1)
-						objn.selected = false;
-					}
-				}
-			}
-			finalnode = pickN(event);
-			if(finalnode) finalnode.selected = true;
-			restyle_nodes();
-			
-			select_rect_start = null;
-			select_rect_end = null;
-			ontick();
-		} else if (mode == 'draw' && temp_link) {
-			let newtgts = [], newsrcs = [];
-			
-			let pickobj = pickN(event);
-			if( pickobj ) {
-				newtgts.push(pickobj.id);
-			} else {
-				pickl = pickL(event, 25);
-				if(pickl) {
-					newsrcs.push(...pickl.srcs);
-					newtgts.push(...pickl.tgts);
-					remove_link(pickl);
-				} else {
-					//create new edge? Or abandon? 
-					pickobj = new_node(fresh_node_name(), event.x, event.y);
-					newtgts.push(pickobj.id);
-				}
-			}
-			if(event.subject.source) { // event source was a link
-				newtgts.push(...event.subject.tgts);
-				remove_link(event.subject);
-			}
-
-
-			// let newtgts = [pickobj.id] // do I maybe want to do this at end?
-		
-			new_link(temp_link.srcs.concat(newsrcs), newtgts, fresh_label());
-
-			temp_link = null;
-			ontick();
-		}
-	}
+	
 });
 
 

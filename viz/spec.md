@@ -8,12 +8,12 @@ title: PDG Viz Desires
  </style>
 
 # Queue
+  * Refactor drawing modes
   * Actions + Keystroke Display
   * visual
 	  * draw labels
 	  * select edges
-	  * add to hyperedges w/drawing
-	  * change \delta + length parameters of hyperedges
+	  * change \delta (edge offset) + length parameters of hyperedges
 	  * make self-edges prettier
   * Edge Focus
 	  * cpd editor
@@ -25,7 +25,6 @@ title: PDG Viz Desires
 	  * Nested borders (Compress full PDGs as nodes + folding)
 	  * Split and merge functionality
 	  * Move entire PDGs around screen at once (nested SVG <g>'s)
-  * Refactor drawing modes
 
 
 
@@ -35,6 +34,12 @@ title: PDG Viz Desires
 	 - Other Inputs (far future)
 		 - Draw from Tablet
 		 - Parse from image
+	 - Import...
+		 - .csv
+		 - graph formats (.dot, ?)
+		 - .json
+		 - .pdg
+		 - 
 
  - **Queries** 
 	 - inconsistency
@@ -57,3 +62,5 @@ title: PDG Viz Desires
   * [X]- selection operators: union, subtraction
   * [X]- drawing selection
   * [X]- painting selection
+
+* [X]- add to hyperedges w/drawing
