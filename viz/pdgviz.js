@@ -41,7 +41,7 @@ var hypergraph = {
 let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
 
 
-const initw = 60, inith = 40;
+const initw = 50, inith = 40;
 // const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
 const OPT_DIST = {0 : 165, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
 
@@ -98,7 +98,7 @@ $(function() {
 			if( multi.length > 0 ) 
 				[ob.x, ob.y] = avgpos(...multi); // defined below.
 		
-			nodes.push(ob);
+			// nodes.push(ob);
 			lookup[s] = ob;
 			multi.forEach(n =>
 				parentLinks.push({"source" : s, "target" : n}) );
@@ -135,9 +135,9 @@ $(function() {
 			tgts : tgt,
 			display: true,
 			//## Added Later:
-			// path2d, lw, dist
+			// path2d, lw, arclen
 			//## Actual Data
-			cpd : null
+			cpd : null,
 		}
 	}
 	window.linkobject = linkobject;
@@ -152,21 +152,21 @@ $(function() {
 		return   [ d3.mean(nodenames.map(v => lookup[v].x)),
 				   d3.mean(nodenames.map(v => lookup[v].y)) ];
 	}
-	function compute_link_shape( src, tgt, midpt=undefined, return_mid=false, arrwidth=undefined) {
+	function compute_link_shape(src, tgt, midpt=undefined, return_mid=false, arrwidth=undefined) {
 		if(arrwidth == undefined) arrwidth=10;
 		// let srcnode = lookup[src.join(",")];
 		// let avgsrc = vec2(srcnode);
 		// if( src.length > 0 ) {
 		// 	avgsrc = avgpos(...src);
 		// }
-		let avgsrc = src.length==0 ? vec2(lookup['']) : avgpos(...src);
+		let avgsrc = src.length==0 ? (midpt ? midpt : vec2(lookup[''])) : avgpos(...src);
 		
 		// let tgtnode = lookup[tgt.join(",")];
 		// let avgtgt = vec2(tgtnode);
 		// if( tgt.length == 0 ) {
 		// 	avgtgt = avgpos(...tgt);
 		// }
-		let avgtgt = tgt.length==0 ? vec2(lookup['']) : avgpos(...tgt);
+		let avgtgt = tgt.length==0 ? (midpt ? midpt : vec2(lookup[''])) : avgpos(...tgt);
 
 		// let mid = [ 0.4*avgsrc[0] + 0.6*avgtgt[0], 0.4*avgsrc[1] + 0.6*avgtgt[1] ];
 		// let mid = midpt ? midpt : 
@@ -278,6 +278,7 @@ $(function() {
 
 		for( let l of links) {
 			// let lw = l.hasAttribute('lw')? l.lw : 2;
+			if(!l.display) continue;
 			let lw = l.lw | 2;
 			context.lineWidth = lw * 1.2 + 3;
 			context.strokeStyle = "white";
@@ -340,18 +341,18 @@ $(function() {
 		});
 		
 		//draw the linknodes 
-		linknodes.forEach(function(n) {
-			context.beginPath();
-		
-			if( n.selected )
-				context.strokeStyle="#1AE";
-			else context.strokeStyle="#A4C";
-		
-			context.moveTo(n.x, n.y);
-			context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
-			context.stroke();				
-		});
-		context.globalAlpha = 1;
+		// linknodes.forEach(function(n) {
+		// 	context.beginPath();
+		// 
+		// 	if( n.selected )
+		// 		context.strokeStyle="#1AE";
+		// 	else context.strokeStyle="#A4C";
+		// 
+		// 	context.moveTo(n.x, n.y);
+		// 	context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
+		// 	context.stroke();				
+		// });
+		// context.globalAlpha = 1;
 		context.restore();
 	}
 	
@@ -364,6 +365,7 @@ $(function() {
 			link: link,
 			x: avg[0] + 10*Math.random()-5,
 			y: avg[1] + 10*Math.random()-5,
+			offset: [0,0],
 			vx: 0, vy:0, w : 10, h : 10,  display: false};
 		return ob;
 	}
@@ -397,8 +399,8 @@ $(function() {
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
-			ln.vx += (ln.true_mid[0] - ln.x) * 0.35 *alpha;
-			ln.vy += (ln.true_mid[1] - ln.y) * 0.35 *alpha;
+			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * 0.35 *alpha;
+			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * 0.35 *alpha;
 		}
 	}
 
@@ -441,10 +443,14 @@ $(function() {
 		// 	.strength(1).distance(110).iterations(3))
 		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
 		// 		.strength(0.3).distance(40).iterations(2))
-		.force("avgpos_align", multi_avgpos_alignment_force)
+		// .force("avgpos_align", multi_avgpos_alignment_force)
 		.force("charge", d3.forceManyBody()
 			// .strength(n => n.display ? -100 : 0))
-			.strength(n => n.link ? 0 : -120))
+			// .strength(n => n.link || n.components ? 0 : -120))
+			// .strength(n => n.link || n.display ? 0 : -120))
+			.strength(n => (n.link || !n.display) ? 0 : -100))
+			.distanceMax(100);
+			// .strength(-100))
 		.force("midpt_align", midpoint_aligning_force)
 		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 			.strength(1).distance(l => {
@@ -644,13 +650,16 @@ $(function() {
 		context.restore();
 		return b;
 	}
-	function pickL(pt, extra_lw=6) {
+	function pickL(pt, extra_lw=6, return_ln=false) {
 		context.save();
-		for(let l of links) {
+		// for(let l of links) {
+		let l;
+		for(let ln of linknodes) {
+			l = ln.link;
 			context.lineWidth = extra_lw + (l.lw | 2);
 			if( context.isPointInStroke(l.path2d, pt.x, pt.y) ) {
 				context.restore();
-				return l;
+				return return_ln ? ln : l;
 			}
 		}
 		context.restore();
@@ -670,12 +679,13 @@ $(function() {
 					// else {
 					let o = pickN(event);
 					if(o) return o;
-					let l = pickL(event);
-					if(l) return l;
+					// let l = pickL(event);
+					let ln = pickL(event,6,true);
+					if(ln) return ln;
 					
 					if(mode == 'draw') {
 						// return lookup[''];
-						let lo = linkobject(['templink', [[],[]]]);
+						let lo = {link: linkobject(['templink', [[],[]]]) };
 						return lo;
 					}
 					// }
@@ -686,14 +696,15 @@ $(function() {
 		);
 	function dragstarted(event) {
 		if(popup_process) clearTimeout(popup_process);
-		if(popped_up_link){
-			delete popped_up_link.lw;
-			ontick();
-		}
+
 		if(mode == 'move') {
 			if (!event.active) simulation.alphaTarget(0.5).restart();
-			event.subject.fx = event.subject.x;
-			event.subject.fy = event.subject.y;
+			if(event.subject.link)  {// it's a link
+				event.subject.initial_offset = event.subject.offset;
+			} else {  // if it's a node
+				event.subject.fx = event.subject.x;
+				event.subject.fy = event.subject.y;
+			}
 		}
 		else if (mode == 'select') {
 			select_rect_start = vec2(event);
@@ -701,9 +712,11 @@ $(function() {
 			ontick();
 		}
 		else if (mode == 'draw') {
-
-			if(event.subject.source != undefined)  { // if it's an edge
-				temp_link = linkobject(['<TEMPORARY>', [event.subject.srcs, ["<MOUSE>"].concat(event.subject.tgts)]]);
+			if(event.subject.link)  { // if it's an edge
+				let l = event.subject.link;
+				l.display = false; // don't display until it's cancelled or released. 
+				temp_link = linkobject(['<TEMPORARY>', [l.srcs, ["<MOUSE>"].concat(l.tgts)]]);
+				temp_link.based_on = l;
 			} else { // drag.subject is a node.
 				temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]]);
 			}
@@ -712,8 +725,14 @@ $(function() {
 	}
 	function dragged(event) {
 		if(mode == 'move') {
-			event.subject.fx = event.x;
-			event.subject.fy = event.y;
+			if(event.subject.link)  { // if it's an edge
+				// console.log(event);
+				// event.subject.offset[0] += event.dx;
+				// event.subject.offset[1] += event.dy;
+			} else {// it's a node
+				event.subject.fx = event.x;
+				event.subject.fy = event.y;
+			}
 		} 
 		else if (mode == 'select') {
 			select_rect_end = vec2(event);
@@ -729,8 +748,16 @@ $(function() {
 	function dragended(event) {
 		if(mode == 'move') {
 			if (!event.active) simulation.alphaTarget(0);
-			event.subject.fx = null;
-			event.subject.fy = null;
+			
+			if(event.subject.link)  { // if it's an edge
+				console.log("FINISH DRAG", event);
+				// event.subject.offset = [ 
+				// 		event.subject.initial_offset[0] + event.,
+				// 		event.subject.initial_offset[1] + event.dy ]
+			} else {// it's a node	
+				event.subject.fx = null;
+				event.subject.fy = null;
+			}
 		}
 		else if (mode == 'select') {
 			let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
@@ -773,9 +800,9 @@ $(function() {
 					newtgts.push(pickobj.id);
 				}
 			}
-			if(event.subject.source != undefined) { // event source was a link
-				newtgts.push(...event.subject.tgts);
-				remove_link(event.subject);
+			if(event.subject.link) { // event source was a link
+				newtgts.push(...event.subject.link.tgts);
+				remove_link(event.subject.link);
 			}
 
 
@@ -849,6 +876,9 @@ $(function() {
 		
 		if(event.key == 'Escape'){
 			if ( temp_link ) {
+				if(temp_link.based_on ) 
+					temp_link.based_on.display = true;
+				
 				temp_link = null;
 				redraw();
 			}
@@ -906,7 +936,7 @@ $(function() {
 		
 		
 		ontick();
-		console.log(lover);
+		// console.log(lover);
 	});
 	window.addEventListener("mousemove", function(e) {
 		// mouse_pt = [e.x, e.y];
