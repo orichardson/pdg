@@ -66,7 +66,7 @@ $(function() {
 		$('#drag-mode-toolbar button').removeClass("active");
 		$(this).addClass('active');
 		mode = $(this).attr('data-mode');
-		console.log('new mode: ', mode);
+		// console.log('new mode: ', mode);
 	});
 
 
@@ -445,12 +445,13 @@ $(function() {
 		// 		.strength(0.3).distance(40).iterations(2))
 		// .force("avgpos_align", multi_avgpos_alignment_force)
 		.force("charge", d3.forceManyBody()
-			// .strength(n => n.display ? -100 : 0))
-			// .strength(n => n.link || n.components ? 0 : -120))
-			// .strength(n => n.link || n.display ? 0 : -120))
-			.strength(n => (n.link || !n.display) ? 0 : -100))
-			.distanceMax(100);
-			// .strength(-100))
+			// .strength(n => n.display ? -100 : 0)
+			// .strength(n => n.link || n.components ? 0 : -120)
+			// .strength(n => n.link || n.display ? 0 : -120)
+			// .strength(-100)
+			.strength(n => (n.link || !n.display) ? 0 : -100)
+			.distanceMax(150)
+		)
 		.force("midpt_align", midpoint_aligning_force)
 		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 			.strength(1).distance(l => {
@@ -618,17 +619,19 @@ $(function() {
 		multis_to_remove.forEach(remove_node);
 	}
 	function remove_link( l ) {
-		console.log("removing link ", l)
+		// console.log("removing link ", l)
 		var index = links.indexOf(l);
 		if(index >= 0) {
 			links.splice(index,1);
 		}
-		else console.warn("link "+l.label+" not found for removal");
+		else if(l.label != 'templink')
+			console.warn("link "+l.label+" not found for removal");
 		index = linknodes.findIndex(ln => ln.link == l)
 		if(index >= 0) {
 			linknodes.splice(index, 1);
 		}
-		else console.warn("linknode corresponding to "+l.label+" not found for removal");
+		else if(l.label != 'templink')
+			console.warn("linknode corresponding to "+l.label+" not found for removal");
 
 		delete ED[l.label];
 	}
@@ -750,7 +753,7 @@ $(function() {
 			if (!event.active) simulation.alphaTarget(0);
 			
 			if(event.subject.link)  { // if it's an edge
-				console.log("FINISH DRAG", event);
+				// console.log("FINISH DRAG", event);
 				// event.subject.offset = [ 
 				// 		event.subject.initial_offset[0] + event.,
 				// 		event.subject.initial_offset[1] + event.dy ]
@@ -842,8 +845,6 @@ $(function() {
 	canvas.addEventListener("click", function(e) {
 		// ADD NEW NODE
 		// if(e.ctrlKey || e.metaKey) {
-		console.log("click event");
-	
 		if( temp_link ) {
 			newtgt = pickN(e);
 			if(newtgt) {
@@ -872,8 +873,7 @@ $(function() {
 	});
 
 	window.addEventListener("keydown", function(event){
-		console.log(event);
-		
+		// console.log(event);		
 		if(event.key == 'Escape'){
 			if ( temp_link ) {
 				if(temp_link.based_on ) 
