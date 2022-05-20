@@ -824,6 +824,13 @@ $(function() {
 			
 			let pickobj = pickN(event);
 			if( pickobj ) {
+				// disable self-edges (for now) --- they're very annoying and easy to make by accident
+				if((temp_link.srcs.length == 1) && (temp_link.srcs[0] == pickobj.id)) {
+					temp_link = null;
+					redraw();
+					return;
+				}
+				
 				newtgts.push(pickobj.id);
 			} else {
 				pickl = pickL(event, 25);
