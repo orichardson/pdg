@@ -43,7 +43,7 @@ let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
 
 const initw = 50, inith = 40;
 // const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
-const OPT_DIST = {0 : 165, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
+const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
 
 $(function() {
 	// resize to full screen
@@ -54,6 +54,11 @@ $(function() {
 	function resizeCanvas() {
 		canvas.width = window.innerWidth;
 		canvas.height = window.innerHeight;
+		if(typeof simulation != "undefined") {
+			simulation.force('center').x(canvas.width/2);
+			simulation.force('center').y(canvas.height/2);
+			simulation.alpha(1).restart();
+		}
 	}
 	resizeCanvas()
 	window.addEventListener('resize', resizeCanvas, false);
@@ -73,8 +78,8 @@ $(function() {
 	var select_rect_end,  select_rect_start;
 	
 
+	// TODO LATER: make these two lets.
 	lookup = [];
-	// TODO make this a let later
 	nodes = N.map( function(varname) {
 		let ob = {id: varname, values: [0,1],
 			w : initw, h: inith, display: true};
@@ -111,16 +116,16 @@ $(function() {
 	}
 
 
-	let nodedata = svg.selectAll(".node").data(nodes, n => n.id);
-	let gnode = nodedata.enter().append("g").classed("node", true);
-	gnode.append("rect")
-		.classed("nodeshape", true)
-		.attr('width', n => n.w).attr('x', n => -n.w/2)
-		.attr('height', n => n.h).attr('y', n => -n.h/2)
-		.attr('rx', 15);
-	gnode.append("text").text(n => n.id);
-	gnode.filter( n => ! n.display).attr('display', 'none')
-	// align_node_dom();
+	// let nodedata = svg.selectAll(".node").data(nodes, n => n.id);
+	// let gnode = nodedata.enter().append("g").classed("node", true);
+	// gnode.append("rect")
+	// 	.classed("nodeshape", true)
+	// 	.attr('width', n => n.w).attr('x', n => -n.w/2)
+	// 	.attr('height', n => n.h).attr('y', n => -n.h/2)
+	// 	.attr('rx', 15);
+	// gnode.append("text").text(n => n.id);
+	// gnode.filter( n => ! n.display).attr('display', 'none')
+	align_node_dom();
 
 	//## Now, make the links.
 	function linkobject([label, [src,tgt]], i) {
@@ -140,9 +145,7 @@ $(function() {
 			cpd : null,
 		}
 	}
-	window.linkobject = linkobject;
 	links = Object.entries(ED).map(linkobject);
-	
 	
 	//##  Next, Updating + Preparing shapes for drawing.  
 	//##  But first, some helpful functions.
@@ -254,10 +257,10 @@ $(function() {
 		// }
 		for (let ln of linknodes) {
 			let l = ln.link;
-			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true, (l.lw|2)*2+4);
+			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true, (l.lw|2)*1.5+6);
 		}
 		
-		nodes.forEach(function(n) {
+		nodes.concat(linknodes).forEach(function(n) {
 			//updating
 			n.x = clamp(n.x, n.w/2, canvas.width - n.w/2);
 			n.y = clamp(n.y, n.h/2, canvas.height - n.h/2);
@@ -281,11 +284,11 @@ $(function() {
 			if(!l.display) continue;
 			let lw = l.lw | 2;
 			context.lineWidth = lw * 1.2 + 3;
-			context.strokeStyle = "white";
+			context.strokeStyle = l.selected ? "rgba(230, 150, 50, 0.4)" : "white";
 			context.stroke(l.path2d);
 			
 			context.lineWidth =  lw;
-			context.strokeStyle = "black";
+			context.strokeStyle = l.selected ? "#863" : "black";
 			context.stroke(l.path2d);
 			// context.lineWidth = 1;
 			// context.setLineDash([4,1]);
@@ -299,16 +302,19 @@ $(function() {
 		}
 		
 		if(temp_link) {
+			let midpt = (temp_link.x == undefined) ? undefined : vec2(temp_link);
+			let tlpath = compute_link_shape(temp_link.srcs, temp_link.tgts, midpt);
+			
 			context.lineWidth = 3;
 			context.strokeStyle = "white";
-			context.stroke( compute_link_shape(temp_link.srcs, temp_link.tgts ))
+			context.stroke( tlpath )
 			
 			context.lineWidth = 1.5;
 			context.strokeStyle = "black";
-			context.stroke( compute_link_shape(temp_link.srcs, temp_link.tgts ))
+			context.stroke( tlpath )
 		}
-		// context.restore();
-		// context.save();
+		context.restore();
+		context.save();
 		// Draw Selection Rectangle
 		context.globalAlpha = 0.2;
 		if( mode == "select" && select_rect_start && select_rect_end ) {
@@ -433,11 +439,8 @@ $(function() {
 		}
 		return bipartite_links;
 	}
-	window.mk_bipartite_links = mk_bipartite_links;
-	// TODO: Make this center force change on resize.
+	
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
-	// simulation = d3.forceSimulation(nodes)
-		
 		//// .force("charge", d3.forceManyBody().strength( -100))
 		// .force("link", d3.forceLink(links).id(l => l.id)
 		// 	.strength(1).distance(110).iterations(3))
@@ -447,8 +450,6 @@ $(function() {
 		.force("charge", d3.forceManyBody()
 			// .strength(n => n.display ? -100 : 0)
 			// .strength(n => n.link || n.components ? 0 : -120)
-			// .strength(n => n.link || n.display ? 0 : -120)
-			// .strength(-100)
 			.strength(n => (n.link || !n.display) ? 0 : -100)
 			.distanceMax(150)
 		)
@@ -457,8 +458,6 @@ $(function() {
 			.strength(1).distance(l => {
 				if(l.arclen) return l.arclen;
 				let optdist = (l.nsibls in OPT_DIST ? OPT_DIST[l.nsibls] : 30*l.nsibls) + sgn(l.isloop)*50;
-				// if( l.link.)
-				// console.log("Evaluating Distance Accessor.",optdist);
 				return optdist;
 			}).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
@@ -474,14 +473,21 @@ $(function() {
 		
 	setTimeout(function(){
 		console.log(canvas.width, canvas.height);
-		for (const node of nodes.concat(linknodes)) {
+		// for (const node of nodes.concat(linknodes)) {
+		for (let node of nodes) {
 			node.x = node.x * 10.8 + canvas.width/2;
 			node.y = node.y * 10.8 + canvas.height/2;
 		} 
-		ontick(); simulation.restart(); } , 10);
-	// setTimeout(() => { simulation.restart(); }, 200);
-
-
+		for(let ln of linknodes) {
+			tgtavg = avgpos(...ln.link.tgts);
+			if(ln.link.srcs.length == 0)
+				[ln.x, ln.y] = tgtavg;
+			else
+				[ln.x, ln.y] = scale( addv(tgtavg, avgpos(...ln.link.srcs)), 0.5);
+		}
+		ontick(); 
+		simulation.alpha(2).restart();
+	} , 10);
 
 	function set_mode(mode) {
 		$("#drag-mode-toolbar button[data-mode='"+mode+"']").click();
@@ -500,7 +506,7 @@ $(function() {
 		while(existing.includes(prefix+i)) i++;
 		return prefix+i;
 	}
-	function new_link(src, tgt, label) {
+	function new_link(src, tgt, label, initial_ln_pos=[undefined,undefined]) {
 		ensure_multinode(src);
 		ensure_multinode(tgt);
 		// simulation.nodes(nodes);
@@ -508,11 +514,14 @@ $(function() {
 		// simulation.force("anotherlink").links(parentLinks);
 		
 		ED[label] = [src, tgt];
-		lobj = linkobject([label, [src,tgt]], links.length);
+		let lobj = linkobject([label, [src,tgt]], links.length);
 		links.push(lobj);
 		// simulation.force("link").links(links);
-		// linknodes = links.map(mk_linknode);
-		linknodes.push(mk_linknode(lobj));
+		let ln = mk_linknode(lobj);
+		ln.x = initial_ln_pos[0] == undefined ? ln.x : initial_ln_pos[0];
+		ln.y = initial_ln_pos[1] == undefined ? ln.y : initial_ln_pos[1];
+
+		linknodes.push(ln);
 		simulation.nodes(nodes.concat(linknodes));
 		simulation.force("bipartite").links(mk_bipartite_links(links));
 
@@ -531,25 +540,28 @@ $(function() {
 		return ob;
 	}
 	function align_node_dom() {
-		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
-		// nodedata = svg.selectAll(".node").data(nodes.concat(linknodes), n => n.id);
-
-			// .enter().append("g").classed("node", true);
-		newnodeGs = nodedata.enter()
+		let nodedata = svg.selectAll(".node").data(nodes, n => n.id);
+		let newnodeGs = nodedata.enter()
 			.append("g")
 			.classed("node", true);
 			// .call(simulation.drag);
-		newnodeGs.append("rect")
-			.classed("nodeshape", true)
+		newnodeGs.append("rect").classed("nodeshape", true);
+		newnodeGs.append("text");
+		
+		
+		nodedata.exit().each(remove_node)
+			.remove();
+		
+		nodedata = nodedata.merge(newnodeGs);
+		nodedata.selectAll("rect.nodeshape")
 			.attr('width', n => n.w).attr('x', n => -n.w/2)
 			.attr('height', n => n.h).attr('y', n => -n.h/2)
 			.attr('rx', 15);
-		newnodeGs.append("text").text(n => n.id);
-		newnodeGs.filter( n => ! n.display).attr('display', 'none');
+		nodedata.selectAll("text").text(n => n.id);
+		nodedata.filter( n => ! n.display).attr('display', 'none');
 		
-		// dunno if this does anything yet
-		nodedata.exit().each(remove_node)
-			.remove();
+		
+
 		
 		if (typeof simulation != 'undefined') {
 			// linknodes = links.map(mk_linknode);
@@ -562,8 +574,8 @@ $(function() {
 	}
 	function restyle_nodes() {
 		/*** Now for some SVG operations. ***/
-		nodedata = svg.selectAll(".node").data(nodes, n => n.id);
-		nodedata
+		// let nodedata = 
+		svg.selectAll(".node").data(nodes, n => n.id)
 			// .attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")")
 			// .classed("selected", n => lookup[n].selected );
 			.attr("transform", n => "translate(" + n.x + ","+ n.y +")")
@@ -635,7 +647,6 @@ $(function() {
 
 		delete ED[l.label];
 	}
-	window.remove_link = remove_link;
 	
 	function pickN(pt) {
 		for(let objn of nodes) {
@@ -688,7 +699,7 @@ $(function() {
 					
 					if(mode == 'draw') {
 						// return lookup[''];
-						let lo = {link: linkobject(['templink', [[],[]]]) };
+						let lo = {link: linkobject(['templink', [[],[]]]), x: event.x, y: event.y};
 						return lo;
 					}
 					// }
@@ -720,6 +731,9 @@ $(function() {
 				l.display = false; // don't display until it's cancelled or released. 
 				temp_link = linkobject(['<TEMPORARY>', [l.srcs, ["<MOUSE>"].concat(l.tgts)]]);
 				temp_link.based_on = l;
+				temp_link.x = event.subject.x;
+				temp_link.y = event.subject.y;
+				// temp_link.unit
 			} else { // drag.subject is a node.
 				temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]]);
 			}
@@ -743,7 +757,8 @@ $(function() {
 		}
 		else if (mode == 'draw') {
 			// mouse_pt = vec2(event);
-			lookup["<MOUSE>"] = {x: event.x, y:event.y, w:5,h:5};
+			lookup["<MOUSE>"] = {x: event.sourceEvent.x,
+							y: event.sourceEvent.y, w:1,h:1};
 			// ontick();
 			redraw();
 		}
@@ -767,9 +782,13 @@ $(function() {
 			let xmax = xmin + w, 
 				ymax = ymin + h;
 
+			finalnode = pickN(event);
+
 			for(let objn of nodes) {
-				if (objn.x >= xmin && objn.x <= xmax && objn.y >= ymin && objn.y <= ymax) {
-					objn.selected = true;
+				if (objn.x >= xmin && objn.x <= xmax && objn.y >= ymin && objn.y <= ymax || objn == finalnode) {
+					objn.selected = event.sourceEvent.shiftKey ? !objn.selected : true;
+					// console.log((objn.selected?"":"un")+"selecting  ", objn.id, event);
+					// console.log((objn.selected?"":"un")+"selecting "+objn.id);
 				} else {
 					// console.log(event, event.sourceEvent.ctrlKey, event.sourceEvent.shiftKey);
 					if(! event.sourceEvent.shiftKey && objn.selected ) {
@@ -778,9 +797,24 @@ $(function() {
 					}
 				}
 			}
-			finalnode = pickN(event);
-			if(finalnode) finalnode.selected = true;
 			restyle_nodes();
+			
+			// essentially copy paste of above, but with a .link because the 
+			// event subject is a linknode, not a link (but .selected is in link).
+			for(let ln of linknodes ){
+				let l = ln.link;
+				if (ln.x >= xmin && ln.x <= xmax && ln.y >= ymin && ln.y <= ymax) {
+					l.selected = event.sourceEvent.shiftKey ? !l.selected : true;
+				} else {
+					if(! event.sourceEvent.shiftKey && l.selected ) {
+						l.selected = false;
+					}
+				}
+				//... plus also this code to close under node selection
+				if(l.srcs.concat(l.tgts).every(n => lookup[n].selected)){
+					l.selected = true;
+				}
+			}
 			
 			select_rect_start = null;
 			select_rect_end = null;
@@ -794,53 +828,87 @@ $(function() {
 			} else {
 				pickl = pickL(event, 25);
 				if(pickl) {
+					if(pickl == temp_link.based_on){
+						temp_link.based_on.display = true;
+						temp_link = null;
+						ontick(); 
+						return;
+					}
 					newsrcs.push(...pickl.srcs);
-					newtgts.push(...pickl.tgts);
+					newtgts.push(...pickl.tgts.filter( n => !newtgts.includes(n)));
 					remove_link(pickl);
 				} else {
-					//create new edge? Or abandon? 
+					// create new edge (Or abandon?)
 					pickobj = new_node(fresh_node_name(), event.x, event.y);
-					newtgts.push(pickobj.id);
+					if(!newtgts.includes(pickobj.id)) newtgts.push(pickobj.id);
 				}
 			}
 			if(event.subject.link) { // event source was a link
-				newtgts.push(...event.subject.link.tgts);
+				newtgts.push(...event.subject.link.tgts.filter( n => !newtgts.includes(n)));
 				remove_link(event.subject.link);
 			}
 
 
 			// let newtgts = [pickobj.id] // do I maybe want to do this at end?
-		
-			new_link(temp_link.srcs.concat(newsrcs), newtgts, fresh_label());
-
+			newsrcs.push(... temp_link.srcs.filter( n => !newsrcs.includes(n)));
+			new_link(newsrcs, newtgts, fresh_label(), [temp_link.x, temp_link.y]);
+			
 			temp_link = null;
 			ontick();
 		}
 	}
 	
 	
+	function promptForName(prompt, defaultname, taken) {
+		let name = window.prompt(prompt, defaultname);
+		existing = nodes.map(n => n.id);
+		if(name) {
+			if(taken.includes(name)) {
+				window.alert(`name ${name} already taken.`);
+			}
+			else return name;
+		}
+	}
+	
 	canvas.addEventListener("dblclick", function(e) {
-		if (true) { // mode guard later 
-			// TODO guards: not already on top of a node. Picks none. 
-			// new node.
+		let obj = pickN(e), link = pickL(e);
+		if(obj) {
+			let name = promptForName("Enter A Variable Name", fresh_node_name(), nodes.map(n=>n.id));
+			if(!name) return;
 			
-			if(!pickN(e))
+			let replacer = nid => (nid == obj.id) ? name : nid;
+			//TODO this will leave parentLinks in the dust...
+			for(let l of links) {
+				l.srcs = l.srcs.map(replacer);
+				l.tgts = l.tgts.map(replacer);
+				l.source = l.srcs.join(",");
+				l.target = l.tgts.join(",");
+			}
+			delete lookup[obj.id];
+			obj.id = name;
+			lookup[name] = obj;
+			align_node_dom();
+			
+		} else if(link) {
+			
+		} else {
 			setTimeout(function() {
-				let name = window.prompt("Enter A Variable Name", fresh_node_name());
-				existing = nodes.map(n => n.id);
-				if(name) {
-					if(existing.includes(name)) {
-						window.alert(`Variable name ${name} already taken.`);
-					} else {
-						new_node(name, e.x, e.y);
-						ontick();
-					}
+				let name = promptForName("Enter A Variable Name", fresh_node_name(), nodes.map(n=>n.id));
+				if(!name) return;
+				
+				newtgt = new_node(name, e.x, e.y);
+				if(temp_link) {
+					// todo: fold out this functionality, shared with click below.
+					new_tgts = temp_link.tgts.slice(1);
+					new_tgts.push(newtgt.id);
+					new_link(temp_link.srcs, new_tgts, fresh_label(), [temp_link.x, temp_link.y]);
+					temp_link = null;
 				}
+				ontick();
 			}, 10);
-		}
-		
-		if(e.ctrlKey || e.metaKey) {
-		}
+		}		
+		// if(e.ctrlKey || e.metaKey) {
+		// }
 	});
 	canvas.addEventListener("click", function(e) {
 		// ADD NEW NODE
@@ -851,7 +919,7 @@ $(function() {
 				if(!e.shiftKey) {
 					new_tgts = temp_link.tgts.slice(1);
 					new_tgts.push(newtgt.id);
-					new_link(temp_link.srcs, new_tgts, fresh_label());
+					new_link(temp_link.srcs, new_tgts, fresh_label(), [temp_link.x, temp_link.y]);
 					temp_link = null;
 				}
 				 else {
@@ -859,17 +927,34 @@ $(function() {
 				}
 			}	
 		} else if(mode == 'move') {
-			obj = pickN(e)
-			if(obj) {
-				if(!e.shiftKey)
-					nodes.forEach(n => {if(n.id != obj.id) n.selected=false;});
-
-				// if(obj.selected) {
-				obj.selected = !obj.selected;
+			let obj = pickN(e), link = pickL(e);
+			
+			if( obj || link)  {
+				if( !e.shiftKey)  {
+					nodes.forEach( n => {if(n != obj) n.selected=false;} );
+					links.forEach( l => {if(l != link) l.selected=false;} );
+				}
+				
+				if(obj) {
+					// console.log("toggling ", obj.id, e);
+					obj.selected = !obj.selected;
+					for(let l of links) {	
+						if(l.srcs.concat(l.tgts).every(n => lookup[n].selected)) {
+							l.selected = true;
+						}
+					}
+				} 
+				if(link) link.selected = !link.selected;
+				
+				
 				restyle_nodes();
-		 	}
+			}
+		} else if(mode == 'select'){
+			let link = pickL(e);
+			if(link) link.selected = !link.selected;
+			// console.log("[Click] " + (link.selected?"":"un")+"selecting  ", link.label, e);
+			redraw();
 		}
-		// }
 	});
 
 	window.addEventListener("keydown", function(event){
@@ -896,12 +981,17 @@ $(function() {
 			// lab = fresh_label();
 			// temp_link = new_link(src, ['<MOUSE>'], "<TEMPORARY>");
 			temp_link = linkobject(['<TEMPORARY>', [src, ["<MOUSE>"]]], undefined)
+			if( src.length == 0) {
+				temp_link.x = lookup["<MOUSE>"].x
+				temp_link.y = lookup["<MOUSE>"].y
+			}
+			console.log(temp_link);
 			// set_mode('draw');
 			// links.push(temp_link);
 		}
 		else if (event.key == ' ') {
 			// simulation.alphaTarget(0.05).restart();
-			simulation.alpha(1).alphaTarget(0).restart();
+			simulation.alpha(2).alphaTarget(0).restart();
 			
 			if(mode == 'move') {
 			}
@@ -910,12 +1000,11 @@ $(function() {
 			}
 		}
 		else if (event.key == 'x') {
-			// nodedata = svg.selectAll('.node').data(nodes, n => n.id);
-			// nodedata.
-			// 	filter(n => n.selected).remove();
-			// links = links.filter(l => l.)
 			simulation.stop();
 			nodes = nodes.filter(n => !n.selected);
+			// for(let i = 0; i < )
+			links_to_remove = links.filter( l => l.selected);
+			links_to_remove.map(remove_link);
 			align_node_dom();
 		}
 		else if (event.key == 'd') {
@@ -945,29 +1034,29 @@ $(function() {
 		
 		if(popped_up_link && !picksL(e, popped_up_link, 10)) {
 			delete popped_up_link.lw;
+			popped_up_link = null;
 			ontick();
 		}
 		
 		if(popup_process) clearTimeout(popup_process);
-		
-		popup_process = setTimeout(function(){
-			let l = pickL(e, 10);
-			popped_up_link = l;
+	
+		if( !popped_up_link) {
+			popup_process = setTimeout(function() {
+				let l = pickL(e, 10);
+				popped_up_link = l;
 
-			if(l) {
-				l.lw = 5;
-				ontick();
-			}
-		}, 100);
+				if(l) {
+					l.lw = 5;
+					ontick();
+				}
+			}, 100);
+		}
 
 		
 		if ( mode == 'move' /* && gpressed */ ) {
 			// TODO move selection, like ondrag below
 		}
 	})
-
-
-	
 });
 
 

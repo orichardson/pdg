@@ -8,18 +8,17 @@ title: PDG Viz Desires
  </style>
 
 # Queue
+  * import / export
   * Refactor drawing modes
   * Actions + Keystroke Display
   * visual
 	  * draw labels
-	  * select edges
 	  * change \delta (edge offset) + length parameters of hyperedges
 	  * make self-edges prettier
   * Edge Focus
 	  * cpd editor
   * Node focus
 	  * value editor + display
-  * import / export
   * UNDO
   * Multi-PDG
 	  * Nested borders (Compress full PDGs as nodes + folding)
@@ -64,3 +63,4 @@ title: PDG Viz Desires
   * [X]- painting selection
 
 * [X]- add to hyperedges w/drawing
+* [X]- select edges

@@ -17,6 +17,11 @@
 	/* background-color: blue; */
 	/* padding:7px; */
 }
+.btn.active{
+	background-color: #005;
+	 color: white; 
+	font-weight: bold;
+}
 
 .fullsize {
 	position: absolute;
