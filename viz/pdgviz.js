@@ -1020,6 +1020,13 @@ $(function() {
 		else if (event.key == 'm') {
 			set_mode("move");
 		}
+		else if (event.key == "g") {
+			simulation.stop();
+			// move selection with mouse
+		}
+		else if (event.key == "s") {
+			
+		}
 
 	});
 	canvas.addEventListener("wheel", function(e) {
