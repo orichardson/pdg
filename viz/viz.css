@@ -44,6 +44,34 @@
 	fill : black;
 }
 
+.linknode text {
+	text-anchor:middle;
+	dominant-baseline : middle;
+	font-family: serif;
+}
+.linknode text.fg {
+	fill: black;
+	/* stroke-width: 5px; */
+}
+.linknode text.bg {
+	stroke-width: 6px;
+}
+
+.linknode.selected text {
+	/* font-size: 30px; */
+}
+.linknode:not(.selected) text {
+	/* font-size: 5px;  */
+	display: none;
+}
+
+.linknode.selected text.bg {
+	stroke: rgba(230,150,50,0.5);
+}
+.linknode:not(.selected) text.bg {
+	stroke: rgba(230,230,230,0.5);
+}
+
 .node:not(.selected) .nodeshape {
 	fill : rgba(200,200,200, 0.3);
 	stroke-width: 1px;

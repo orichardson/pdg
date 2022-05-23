@@ -1,20 +1,13 @@
-console.log("Custom JS Executing");
+console.log("pdgvz.js");
 
-////  here's the hypergraph...
-// let [N, ED] = [["PS", "S", "SH", "C"], [[[], ["PS"]], [["PS"], ["S"]], [["PS"], ["SH"]], [["S", "SH"], ["C"]]]];
-////version with "1" instead of empy set.
-// let [N, ED] = [["1", "PS", "S", "SH", "C"], [[["1"], ["PS"]], [["PS"], ["S"]], [["PS"], ["SH"]], [["S", "SH"], ["C"]]]];
-//// version with extra node T
-// let [N, ED] = [["PS", "S", "SH", "C", "T"], [[[], ["PS"]], [["PS"], ["S"]], [["PS"], ["SH"]], [["S", "SH"], ["C"]]]];
-//// test new format
-var hypergraph = {
-	nodes : ["PS", "S", "SH", "C", "T", "Test 1", "Test 2"], 
-	hedges : {0: [[], ["PS"]], 
-	 1: [["PS"], ["S"]],
-	 2: [["PS"], ["SH"]],
-	 3: [["S", "SH"], ["C"]], 
-	 P: [["T"], ["Test 1", "Test 2"]] } 
-};
+// var hypergraph = { // BN1.json
+// 	nodes : ["PS", "S", "SH", "C", "T", "Test 1", "Test 2"], 
+// 	hedges : {0: [[], ["PS"]], 
+// 	 1: [["PS"], ["S"]],
+// 	 2: [["PS"], ["SH"]],
+// 	 3: [["S", "SH"], ["C"]], 
+// 	 P: [["T"], ["Test 1", "Test 2"]] } 
+// };
 // hypergraph = {
 // 	nodes : ['X0', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6'],
 //  	hedges: {
@@ -27,18 +20,17 @@ var hypergraph = {
 // 		'p277': [['X2'], ['X6']]}
 // };
 
-// hypergraph = {
-// 	nodes : ['A', 'B', 'C', 'D'],
-// 	hedges : {
-// 		p0: [['B', 'C'], ['A']],
-// 		p2: [['A', 'D'], ['B']],
-// 		p4: [['A', 'D'], ['C']],
-// 		p6: [['B', 'C'], ['D']]
-// 	}
-// };
+hypergraph = {
+	nodes : ['A', 'B', 'C', 'D'],
+	hedges : {
+		p0: [['B', 'C'], ['A']],
+		$p_2$: [['A', 'D'], ['B']],
+		p4: [['A', 'D'], ['C']],
+		p6: [['B', 'C'], ['D']]
+	}
+};
 
 
-let [N, ED] = [hypergraph.nodes, hypergraph.hedges];
 
 
 const initw = 50, inith = 40;
@@ -60,12 +52,10 @@ $(function() {
 			simulation.alpha(1).restart();
 		}
 	}
-	resizeCanvas()
 	window.addEventListener('resize', resizeCanvas, false);
-	
+	resizeCanvas()
 	
 	let mode = $('#drag-mode-toolbar button.active').attr('data-mode');
-	console.log(mode);
 	
 	$('#drag-mode-toolbar button').on('click', function() {
 		$('#drag-mode-toolbar button').removeClass("active");
@@ -74,22 +64,12 @@ $(function() {
 		// console.log('new mode: ', mode);
 	});
 
-
-	var select_rect_end,  select_rect_start;
-	
-
-	// TODO LATER: make these two lets.
+	// TODO LATER: make these lets.
+	nodes = [];
+	links = [];
 	lookup = [];
-	nodes = N.map( function(varname) {
-		let ob = {id: varname, values: [0,1],
-			w : initw, h: inith, display: true};
-		lookup[varname] = ob;
-		return ob;
-	});
-	// window.nodes = nodes;
+	linknodes = [];
 	let parentLinks = [];
-	// TODO let, later
-	// let link_nodes = [];
 	
 	function ensure_multinode(multi) {
 		s = multi.join(',')
@@ -109,25 +89,6 @@ $(function() {
 				parentLinks.push({"source" : s, "target" : n}) );
 		};
 	}
-	for (label in ED) {
-		for(var multi of ED[label]) {
-			ensure_multinode(multi);
-		}
-	}
-
-
-	// let nodedata = svg.selectAll(".node").data(nodes, n => n.id);
-	// let gnode = nodedata.enter().append("g").classed("node", true);
-	// gnode.append("rect")
-	// 	.classed("nodeshape", true)
-	// 	.attr('width', n => n.w).attr('x', n => -n.w/2)
-	// 	.attr('height', n => n.h).attr('y', n => -n.h/2)
-	// 	.attr('rx', 15);
-	// gnode.append("text").text(n => n.id);
-	// gnode.filter( n => ! n.display).attr('display', 'none')
-	align_node_dom();
-
-	//## Now, make the links.
 	function linkobject([label, [src,tgt]], i) {
 		// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
 		return {
@@ -145,10 +106,123 @@ $(function() {
 			cpd : null,
 		}
 	}
-	links = Object.entries(ED).map(linkobject);
+	function mk_linknode(link) {
+		let avg = avgpos(...link.srcs, ...link.tgts)
+		let ob = {
+			// id: link.label+link.source+link.target
+			id: "ℓ"+link.label, 
+			link: link,
+			x: avg[0] + 10*Math.random()-5,
+			y: avg[1] + 10*Math.random()-5,
+			offset: [0,0],
+			vx: 0, vy:0, w : 10, h : 10,  display: false};
+		return ob;
+	}
 	
-	//##  Next, Updating + Preparing shapes for drawing.  
-	//##  But first, some helpful functions.
+	load_hypergraph(hypergraph);
+	
+	function load_hypergraph(hypergraph) {
+		if(typeof simulation != "undefined") simulation.stop();
+		
+		// clear state
+		parentLinks = [];
+		lookup = [];
+		// load nodes
+		nodes = hypergraph.nodes.map( function(varname) {
+			let ob = {id: varname, values: [0,1],
+				w : initw, h: inith, display: true};
+			lookup[varname] = ob;
+			return ob;
+		});
+		align_node_dom();		
+		
+		// load saved node properties
+		if(hypergraph.viz && hypergraph.viz.nodes) {
+			for( const [nid, propobj] of Object.entries(hypergraph.viz.nodes)){
+				Object.assign(lookup[nid], propobj)
+			}
+		}
+		
+		// load hyper-edges
+		let ED = hypergraph.hedges;
+		for (label in ED) {
+			for(var multi of ED[label]) {
+				ensure_multinode(multi);
+			}
+		}
+		links = Object.entries(ED).map(linkobject);
+		linknodes = links.map(mk_linknode)
+		
+		// load saved viz properties for link-nodes (e.g., link positions)
+		if(hypergraph.viz && hypergraph.viz.linknodes) {
+			hypergraph.viz.linknodes.forEach( function([label, ob]) {
+				let ln = linknodes.find(ln => ln.link.label == label);
+				Object.assign(ln, ob);
+			});
+		} 
+		
+		// if simulation exists, update nodes & edges of simulation + restart.
+		if(typeof simulation != "undefined") {
+			simulation.nodes(nodes.concat(linknodes));
+			simulation.force('bipartite').links(mk_bipartite_links(links));
+			
+			if( ! hypergraph.viz ){
+				reinitialize_node_positions();
+			}
+			else {
+				ontick();
+				simulation.alpha(0.05).restart();
+			}
+			
+		}
+	}
+	function current_hypergraph() {
+		let hedges = {}
+		for(let l of links) {
+			hedges[l.label] = [l.srcs, l.tgts];
+		}
+		return {
+			nodes : nodes.map(n => n.id),
+			hedges : hedges,
+			viz : {
+				nodes : Object.fromEntries(nodes.map(
+						n => [n.id, cloneAndPluck(n, ["x", "y", "w", "h"])]
+						// n => [n.id, n]
+					)),
+				linknodes : linknodes.map(
+					// ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h"] )]
+					ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h"] )]
+				)
+			}
+		}
+	}
+	
+	$('#save-button').click(function(e){
+		download_JSON(current_hypergraph(), 'hypergraph');
+	});
+	$('#load-button').click(function(e){
+		$('#fileupload').click();
+	})
+	$('#fileupload').on('change', function(evt){
+		// console.log(evt);
+		const reader = new FileReader();
+		reader.onload = function(e) {
+			// console.log(e);
+			let ob = JSON.parse(e.target.result);
+			load_hypergraph(ob);
+			console.log("HYPERGRAPH:", ob);
+		};
+		reader.readAsText(evt.target.files[0]);
+	})	
+	
+	// temporary states, for actions
+	var select_rect_end =  select_rect_start = null;
+	var temp_link = null;	
+	var popup_process = null;
+	var popped_up_link = null;
+ 
+	//##  Next, Updating + Preparing shapes for drawing, starting with a 
+	// helpful way of getting average position by node labels.  
 	function avgpos( ... nodenames ) {
 		// if ( nodenames[0] == "<MOUSE>")
 		// 	return mouse_pt;
@@ -179,9 +253,9 @@ $(function() {
 			return sqshortened_end(mid, vec2(lookup[s]), [lookup[s].w, lookup[s].h], 10);
 		}
 		let avgsrcshortened = src.length == 0 ? 
-			shortener("") : scale(addv(... src.map(shortener)), 1 / src.length);
+			(midpt ? midpt: shortener("")) : scale(addv(... src.map(shortener)), 1 / src.length);
 		let avgtgtshortened = tgt.length == 0 ?
-			shortener("") : scale(addv(... tgt.map(shortener)), 1 / tgt.length);
+			(midpt ? midpt: shortener("")) : scale(addv(... tgt.map(shortener)), 1 / tgt.length);
 		let midearly = mid;
 		// mid = [ .5*avgsrcshortened[0] + .5*avgtgtshortened[0],
 		// 	.5*avgsrcshortened[1] + .5*avgtgtshortened[1] ];
@@ -250,8 +324,6 @@ $(function() {
 		return lpath;
 	}
 	function ontick() {
-		// for (label in ED) {
-		// 	 let [src, tgt] = ED[label];
 		// for (let l of links) {
 		// 	l.path2d = compute_link_shape(l.srcs,l.tgts);
 		// }
@@ -267,6 +339,7 @@ $(function() {
 		});
 		
 		restyle_nodes();
+		align_link_dom();
 		redraw();
 	}
 	function redraw() {
@@ -362,20 +435,7 @@ $(function() {
 		context.restore();
 	}
 	
-	
-	function mk_linknode(link) {
-		let avg = avgpos(...link.srcs, ...link.tgts)
-		let ob = {
-			// id: link.label+link.source+link.target
-			id: "ℓ"+link.label, 
-			link: link,
-			x: avg[0] + 10*Math.random()-5,
-			y: avg[1] + 10*Math.random()-5,
-			offset: [0,0],
-			vx: 0, vy:0, w : 10, h : 10,  display: false};
-		return ob;
-	}
-	
+	// Simlation Functions: forces, and initialization
 	function multi_avgpos_alignment_force(alpha) {
 		for(let n of nodes) {
 			if (n.components && n.components.length > 1) {
@@ -409,8 +469,6 @@ $(function() {
 			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * 0.35 *alpha;
 		}
 	}
-
-	linknodes = links.map(mk_linknode)
 	function mk_bipartite_links(links){
 		bipartite_links = []
 		for( let l of links) {
@@ -439,6 +497,21 @@ $(function() {
 		}
 		return bipartite_links;
 	}
+	function reinitialize_node_positions() {
+		for (let node of nodes) {
+			node.x = node.x * 10.8 + canvas.width/2;
+			node.y = node.y * 10.8 + canvas.height/2;
+		} 
+		for(let ln of linknodes) {
+			tgtavg = avgpos(...ln.link.tgts);
+			if(ln.link.srcs.length == 0)
+				[ln.x, ln.y] = tgtavg;
+			else
+				[ln.x, ln.y] = scale( addv(tgtavg, avgpos(...ln.link.srcs)), 0.5);
+		}
+		ontick(); 
+		simulation.alpha(2).restart();
+	} 
 	
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
 		//// .force("charge", d3.forceManyBody().strength( -100))
@@ -471,30 +544,11 @@ $(function() {
 		.stop();
 	simulation.alphaDecay(0.05);
 		
-	setTimeout(function(){
-		console.log(canvas.width, canvas.height);
-		// for (const node of nodes.concat(linknodes)) {
-		for (let node of nodes) {
-			node.x = node.x * 10.8 + canvas.width/2;
-			node.y = node.y * 10.8 + canvas.height/2;
-		} 
-		for(let ln of linknodes) {
-			tgtavg = avgpos(...ln.link.tgts);
-			if(ln.link.srcs.length == 0)
-				[ln.x, ln.y] = tgtavg;
-			else
-				[ln.x, ln.y] = scale( addv(tgtavg, avgpos(...ln.link.srcs)), 0.5);
-		}
-		ontick(); 
-		simulation.alpha(2).restart();
-	} , 10);
+	setTimeout(reinitialize_node_positions, 10);
 
-	function set_mode(mode) {
-		$("#drag-mode-toolbar button[data-mode='"+mode+"']").click();
-	}
+	
 	function fresh_label(prefix="p") {
-		// existing = Object.keys(ED);
-		existing = links.map( l => l.label)
+		existing = links.map( l => l.label);
 		i = 1;
 		while(existing.includes(prefix+i)) i++;
 		return prefix+i;
@@ -513,7 +567,6 @@ $(function() {
 		align_node_dom();
 		// simulation.force("anotherlink").links(parentLinks);
 		
-		ED[label] = [src, tgt];
 		let lobj = linkobject([label, [src,tgt]], links.length);
 		links.push(lobj);
 		// simulation.force("link").links(links);
@@ -560,18 +613,28 @@ $(function() {
 		nodedata.selectAll("text").text(n => n.id);
 		nodedata.filter( n => ! n.display).attr('display', 'none');
 		
-		
-
-		
 		if (typeof simulation != 'undefined') {
-			// linknodes = links.map(mk_linknode);
 			simulation.nodes(nodes.concat(linknodes));
 			simulation.force("bipartite").links(mk_bipartite_links(links));
-
-			// simulation.nodes(nodes);
+			
 			simulation.restart();
 		}
 	}
+	function align_link_dom() {
+		let lndata = svg.selectAll(".linknode").data(linknodes, ln => ln.link.label);
+		
+		let newlnGs = lndata.enter().append("g").classed("linknode", true);
+		newlnGs.append("text").classed("bg", true);
+		newlnGs.append("text").classed("fg", true);
+
+		lndata.exit().remove();
+		
+		lndata = lndata.merge(newlnGs);
+		lndata.attr('transform', ln => "translate("+ ln.x+","+ln.y+")")
+			.classed('selected', ln => ln.link.selected);
+		lndata.selectAll("text").text(ln => ln.link.label);		
+	}
+	
 	function restyle_nodes() {
 		/*** Now for some SVG operations. ***/
 		// let nodedata = 
@@ -644,8 +707,6 @@ $(function() {
 		}
 		else if(l.label != 'templink')
 			console.warn("linknode corresponding to "+l.label+" not found for removal");
-
-		delete ED[l.label];
 	}
 	
 	function pickN(pt) {
@@ -679,12 +740,7 @@ $(function() {
 		context.restore();
 	}
 	
-	var temp_link = null;	
-	var popup_process = null;
-	var popped_up_link = null;
-
-	d3.select(canvas)
-		.call(d3.drag()
+	d3.select(canvas).call(d3.drag()
 			.container(canvas)
 			.subject(function(event) {
 					// console.log("drag.subject passed : ", event)
@@ -758,7 +814,11 @@ $(function() {
 		else if (mode == 'draw') {
 			// mouse_pt = vec2(event);
 			lookup["<MOUSE>"] = {x: event.sourceEvent.x,
-							y: event.sourceEvent.y, w:1,h:1};
+							y: event.sourceEvent.y,
+							// w:1,h:1
+							// setting to negative 9 means the arrow is only shortened 1 pixel.
+							w: -9, h: -9
+						};
 			// ontick();
 			redraw();
 		}
@@ -865,22 +925,14 @@ $(function() {
 		}
 	}
 	
-	
-	function promptForName(prompt, defaultname, taken) {
-		let name = window.prompt(prompt, defaultname);
-		existing = nodes.map(n => n.id);
-		if(name) {
-			if(taken.includes(name)) {
-				window.alert(`name ${name} already taken.`);
-			}
-			else return name;
-		}
+	function set_mode(mode) {
+		$("#drag-mode-toolbar button[data-mode='"+mode+"']").click();
 	}
 	
 	canvas.addEventListener("dblclick", function(e) {
 		let obj = pickN(e), link = pickL(e);
-		if(obj) {
-			let name = promptForName("Enter A Variable Name", fresh_node_name(), nodes.map(n=>n.id));
+		if(obj) { // rename selected node
+			let name = promptForName("Enter New Variable Name", obj.id, nodes.map(n=>n.id));
 			if(!name) return;
 			
 			let replacer = nid => (nid == obj.id) ? name : nid;
@@ -895,10 +947,10 @@ $(function() {
 			obj.id = name;
 			lookup[name] = obj;
 			align_node_dom();
+		} else if(link) { // rename selected cpd
 			
-		} else if(link) {
 			
-		} else {
+		} else { // nothing selected; create new variable here.
 			setTimeout(function() {
 				let name = promptForName("Enter A Variable Name", fresh_node_name(), nodes.map(n=>n.id));
 				if(!name) return;
@@ -963,7 +1015,6 @@ $(function() {
 			redraw();
 		}
 	});
-
 	window.addEventListener("keydown", function(event){
 		// console.log(event);		
 		if(event.key == 'Escape'){
@@ -1072,75 +1123,3 @@ $(function() {
 		}
 	})
 });
-
-
-
-function  corners2xywh(start, end) {
-	xmin = Math.min(start[0], end[0]);
-	xmax = Math.max(start[0], end[0]);
-	ymin = Math.min(start[1], end[1]);
-	ymax = Math.max(start[1], end[1]);
-	// return [xmin,xmax,ymin,ymax];
-	return [xmin, ymin, xmax-xmin, ymax-ymin];
-}
-
-function vec2( obj ) {
-	return [obj.x, obj.y];
-}
-function mag( deltas ) {
-	return Math.sqrt(d3.sum( deltas.map(dx => dx*dx) ));
-}
-function subv(v1, v2) {
-	// return [v1[0]-v2[0], v1[1]-v2[1]];
-	return v1.map( (v1i, i) => v1i - v2[i]);
-}
-function addv(...vecs) {
-	// return v1.map( (v1i, i) => v1i + v2[i]);
-	// return [x1+x2, y1+y2];
-	if(vecs.length > 0) {
-		// console.log(vecs[0]);
-		return vecs[0].map( (_v0i, i) => vecs.reduce((total, v) => total + v[i], 0) );
-	}
-	return [0];
-}
-function scale(x, s) {
-	return x.map( x => x*s);
-}
-function clamp(val, l, u) {
-	if(val < l) return l;
-	if(val > u) return u;
-	return val
-}
-function magclamp(val, m) {
-	return clamp(val, -m, m)
-}
-function sgn(x) {
-	if(x > 0) return 1;
-	if(x < 0) return -1;
-	return 0;
-}
-
-function sqshortened_end(from, to, [w,h], extra=0) {
-	delta = subv(to,from);
-	h = h + extra;
-	w = w + extra;
-	if(delta[0] == 0 && delta[1] == 0) {
-		return addv(from, [w/2, h/2]);
-	}
-	sqshortdelta = [
-		delta[0] - magclamp(delta[0] * h / Math.abs(delta[1]), w)/2,
-		delta[1] - magclamp(delta[1] * w / Math.abs(delta[0]), h)/2];
-	return addv(from,sqshortdelta);
-}
-
-function arrowpts(from, to, arrscale=20, narrow=0.75) {
-	delta = subv(to,from);
-	factor = arrscale / mag(delta);
-	npara = scale(delta, -factor);
-	base = addv(to, npara);
-
-	ortho = [delta[1] * factor*narrow, -delta[0] * factor*narrow];
-	halfortho = scale(ortho,0.5);
-	return [ addv(base, ortho), subv(base, ortho),
-			addv(base,halfortho), subv(base,halfortho) ];
-}
