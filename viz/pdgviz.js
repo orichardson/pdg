@@ -36,6 +36,9 @@ hypergraph = {
 const initw = 50, inith = 40;
 // const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
 const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
+function default_separation(nsibls, isLoop) {
+	return (nsibls in OPT_DIST ? OPT_DIST[nsibls] : 20*nsibls) + sgn(isLoop)*50;
+}
 
 $(function() {
 	// resize to full screen
@@ -472,27 +475,33 @@ $(function() {
 	}
 	function mk_bipartite_links(links){
 		bipartite_links = []
-		for( let l of links) {
-			let lname = "ℓ" + l.label;
+		// for( let l of links) {
+		// let lname = "ℓ" + l.label;
+		for( let ln of linknodes) {
+			let l = ln.link;
+			let lname = ln.id;
 			
-			// let loops = l.srcs.filter(n => l.tgts.includes(n));
-			
-			// l.srcs.map( s =>  {source:s, target:lname})
-			// let delta = l.tgts.length == 0? -1 : 0;
-			let delta = 0;
 			for( let s of l.srcs) {
 				bipartite_links.push({ 
 					source: s, target: lname, 
-					nsibls: l.srcs.length + delta, 
-					isloop: l.tgts.includes(s)
+					n : s, ln : ln,
+					separation : 
+						ln.sep && ln.sep[s] ? ln.sep[s] : 
+						default_separation(l.srcs.length, l.tgts.includes(s)),
+					// nsibls: l.srcs.length + delta, 
+					// isloop: l.tgts.includes(s)
 				});
 			}
 			// delta = l.srcs.length == 0 ?  -1 : 0;
 			for( let t of l.tgts) {
 				bipartite_links.push({
 					source: lname, target: t, 
-					nsibls: l.tgts.length + delta, 
-					isloop: l.srcs.includes(t) 
+					n : t, ln : ln,
+					separation : 
+						ln.sep && ln.sep[t] ? ln.sep[t] : 
+						default_separation(l.tgts.length, l.srcs.includes(t)),
+					// nsibls: l.tgts.length + delta, 
+					// isloop: l.srcs.includes(t) 
 				});
 			}
 		}
@@ -513,6 +522,7 @@ $(function() {
 		ontick(); 
 		simulation.alpha(2).restart();
 	} 
+
 	
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
 		//// .force("charge", d3.forceManyBody().strength( -100))
@@ -529,11 +539,7 @@ $(function() {
 		)
 		.force("midpt_align", midpoint_aligning_force)
 		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
-			.strength(1).distance(l => {
-				if(l.arclen) return l.arclen;
-				let optdist = (l.nsibls in OPT_DIST ? OPT_DIST[l.nsibls] : 30*l.nsibls) + sgn(l.isloop)*50;
-				return optdist;
-			}).iterations(3))
+			.strength(1).distance(l => l.separation).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 		// 		.strength(0.5).iterations(5))
 		.force("nointersect", d3.forceCollide().radius(
@@ -994,6 +1000,23 @@ $(function() {
 				[n.x, n.y] = addv(n.old_pos, mouse_end, scale(action.mouse_start, -1)); 
 				delete n.old_pos;
 			});
+			
+			for(let ln of linknodes) {
+				if(action.targets.includes(ln)) {
+					ln.sep = {}
+					for(let n of ln.link.srcs.concat(ln.link.tgts)) {
+						ln.sep[n] = mag(subv(vec2(ln), vec2(lookup[n])));
+					}
+				}
+			}
+			simulation.force("bipartite").links(mk_bipartite_links(links));
+
+			// for(let n of action.targets) {
+			// 
+			// }
+			
+			
+			
 			action = null;
 			restyle_nodes();
 			
@@ -1038,7 +1061,13 @@ $(function() {
 				temp_link = null;
 				redraw();
 			}
-			else {
+			else if( action && action.type == 'move') {
+				action.targets.forEach(n => {
+					[n.x, n.y] = n.old_pos;
+					delete n.old_pos;
+				});
+				action = null;
+				ontick();
 			}
 		}
 		else if (event.key == 'b') {
