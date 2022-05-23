@@ -220,6 +220,7 @@ $(function() {
 	var temp_link = null;	
 	var popup_process = null;
 	var popped_up_link = null;
+	var action = null;
  
 	//##  Next, Updating + Preparing shapes for drawing, starting with a 
 	// helpful way of getting average position by node labels.  
@@ -331,15 +332,15 @@ $(function() {
 			let l = ln.link;
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true, (l.lw|2)*1.5+6);
 		}
-		
+
+		// clamp to within boundary
 		nodes.concat(linknodes).forEach(function(n) {
-			//updating
 			n.x = clamp(n.x, n.w/2, canvas.width - n.w/2);
 			n.y = clamp(n.y, n.h/2, canvas.height - n.h/2);
 		});
 		
 		restyle_nodes();
-		align_link_dom();
+		restyle_links();
 		redraw();
 	}
 	function redraw() {
@@ -620,7 +621,7 @@ $(function() {
 			simulation.restart();
 		}
 	}
-	function align_link_dom() {
+	function restyle_links() {
 		let lndata = svg.selectAll(".linknode").data(linknodes, ln => ln.link.label);
 		
 		let newlnGs = lndata.enter().append("g").classed("linknode", true);
@@ -634,7 +635,6 @@ $(function() {
 			.classed('selected', ln => ln.link.selected);
 		lndata.selectAll("text").text(ln => ln.link.label);		
 	}
-	
 	function restyle_nodes() {
 		/*** Now for some SVG operations. ***/
 		// let nodedata = 
@@ -742,6 +742,7 @@ $(function() {
 	
 	d3.select(canvas).call(d3.drag()
 			.container(canvas)
+			.clickDistance(10)
 			.subject(function(event) {
 					// console.log("drag.subject passed : ", event)
 					if (mode == 'select') return true;
@@ -752,7 +753,7 @@ $(function() {
 					// let l = pickL(event);
 					let ln = pickL(event,6,true);
 					if(ln) return ln;
-					
+	
 					if(mode == 'draw') {
 						// return lookup[''];
 						let lo = {link: linkobject(['templink', [[],[]]]), x: event.x, y: event.y};
@@ -766,7 +767,7 @@ $(function() {
 		);
 	function dragstarted(event) {
 		if(popup_process) clearTimeout(popup_process);
-
+			
 		if(mode == 'move') {
 			if (!event.active) simulation.alphaTarget(0.5).restart();
 			if(event.subject.link)  {// it's a link
@@ -878,6 +879,7 @@ $(function() {
 			
 			select_rect_start = null;
 			select_rect_end = null;
+			restyle_links();
 			ontick();
 		} else if (mode == 'draw' && temp_link) {
 			let newtgts = [], newsrcs = [];
@@ -985,7 +987,17 @@ $(function() {
 					temp_link.tgts.push(newtgt.id);
 				}
 			}	
-		} else if(mode == 'move') {
+		} else if(action && action.type == 'move') {
+			mouse_end = vec2(lookup['<MOUSE>']);
+			
+			action.targets.forEach(n => {
+				[n.x, n.y] = addv(n.old_pos, mouse_end, scale(action.mouse_start, -1)); 
+				delete n.old_pos;
+			});
+			action = null;
+			restyle_nodes();
+			
+		} else if(mode == 'move') { // selection in manipulate mode
 			let obj = pickN(e), link = pickL(e);
 			
 			if( obj || link)  {
@@ -1007,6 +1019,7 @@ $(function() {
 				
 				
 				restyle_nodes();
+				restyle_links();
 			}
 		} else if(mode == 'select'){
 			let link = pickL(e);
@@ -1074,6 +1087,16 @@ $(function() {
 		else if (event.key == "g") {
 			simulation.stop();
 			// move selection with mouse
+			
+			action = {
+				type : "move", 
+				mouse_start : vec2(lookup["<MOUSE>"]),
+				targets: nodes.filter(n => n.selected).concat(linknodes.filter(ln => ln.link.selected)) 
+			}
+			
+			action.targets.forEach( n => {
+				n.old_pos = vec2(n);
+			});
 		}
 		else if (event.key == "s") {
 			
@@ -1117,8 +1140,14 @@ $(function() {
 			}, 100);
 		}
 
-		
-		if ( mode == 'move' /* && gpressed */ ) {
+		// if ( mode == 'move'  && action) {
+		if(action && action.type == 'move') {
+			action.targets.forEach(n => {
+				[n.x, n.y] = addv(n.old_pos, vec2(e), scale(action.mouse_start, -1)); 
+			});
+			restyle_nodes();
+			// midpoint_aligning_force(1);
+			ontick();
 			// TODO move selection, like ondrag below
 		}
 	})
