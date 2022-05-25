@@ -1,0 +1,94 @@
+#+TITLE: Project Notebook
+
+
+* INFERENCE
+** CVXPY inference algorithm [0/2]
+*** TODO Auto-generate cliques of graph
+*** TODO
+
+* VIZ
+** QUEUE
+*** STRT Refactor drawing modes
+Remove "Select" as a mode.
+Make it, as well as the "t" key, special submodes, that only apply for
+a single operation.
+
+*** TODO Actions + Keystroke Display
+Make such "Special Operations" visually clear and automatically display which ones are available. Important for ease of use
+
+*** Visual [2/7]
+**** DONE draw labels
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2022-05-23 Mon 16:02]
+:END:
+**** KILL change \delta (edge offset) + length parameters of hyperedges
+:LOGBOOK:
+- State "KILL"       from "TODO"       [2022-05-23 Mon 16:02]
+:END:
+**** TODO make self-edges prettier
+One possibility: multiple link nodes.
+**** TODO double-headed arrows
+**** TODO circle-tailed arrows
+*
+
+**** TODO MathJax in Nodes
+
+*** TODO Simulation Toggle-able.
+
+*** Structure Editing
+**** STRT Moving.
+Blender style
+**** TODO Scaling.
+Issue: distances are for pairs of connected nodes / links.
+So how do you scale things separately?
+
+**** TODO Rename labels
+
+
+*** Edge Focus
+**** TODO CPD editor
+
+*** Node Focus
+**** TODO Value Editor
+**** TODO Associate list to each node
+**** See: Multi-PDG below
+
+*** TODO UNDO
+
+*** Multi-PDG [0/3]
+**** TODO Nested Borders (Compress full PDGs as nodes + folding)
+**** TODO Split and Merge functionality
+**** TODO Move entire PDGs around the screen
+
+
+** WISHLIST
+*** Other Inputs
+**** Draw on Tablet
+**** Parse from Image
+*** Importing of other formats
+**** .csv
+**** graph formats (.dot, ...)
+**** .pdg files
+**** Class Graph / Objet Graph from javascript
+*** Queries + Analytics
+**** Inconsistency
+**** Visualize a Joint distribution
+**** Information Diagrams (both for joint dists + PDGs)
+
+** FINISHED
+*** [X] bounding box for nodes
+*** [X] edge labels in hypergraph
+*** [X] new "node" for each hypergraph
+*** [X] repulsion between edges
+*** [X] add "new node" tool
+*** [X] add "new hyperedge" tool
+*** [X] selection: (nodes + edges)
+*** [X] selection operators: union, subtraction
+*** [X] drawing selection
+*** [X] painting selection
+*** [X] add to hyperedges w/drawing
+*** [X] select edges
+*** [X] import / export
+
+
+* FEATURE WISHLIST
