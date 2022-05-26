@@ -219,11 +219,10 @@ $(function() {
 	})	
 	
 	// temporary states, for actions
-	var select_rect_end =  select_rect_start = null;
 	var temp_link = null;	
 	var popup_process = null;
 	var popped_up_link = null;
-	var action = null;
+	var action = {};
  
 	//##  Next, Updating + Preparing shapes for drawing, starting with a 
 	// helpful way of getting average position by node labels.  
@@ -394,14 +393,14 @@ $(function() {
 		context.save();
 		// Draw Selection Rectangle
 		context.globalAlpha = 0.2;
-		if( mode == "select" && select_rect_start && select_rect_end ) {
+		if( action.type == 'box-select' && action.start) {
 			// console.log(...corners2xywh(select_rect_start, select_rect_end))
 			// context.save();
 			context.fillStyle="orange";
 			
 			// context.fillRect(select_rect_start.x, select_rect_start.y, select_rect_end.x, select_rect_end.y);
 			// let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
-			context.fillRect(...corners2xywh(select_rect_start, select_rect_end));
+			context.fillRect(...corners2xywh(action.start, action.end));
 			// context.stroke();
 			// context.restore();
 		}
@@ -751,17 +750,19 @@ $(function() {
 			.clickDistance(10)
 			.subject(function(event) {
 					// console.log("drag.subject passed : ", event)
-					if (mode == 'select') return true;
-					// if (mode == 'draw' && temp_link) return undefined;
+					if (action.type == 'box-select') return true;
+					// else if(action.type == '')
+					if (mode == 'draw' && temp_link) return undefined;
 					// else {
+
 					let o = pickN(event);
 					if(o) return o;
-					// let l = pickL(event);
 					let ln = pickL(event,6,true);
 					if(ln) return ln;
-	
+
+					//  if in draw mode, 
+					//  create new link source (empty srcs) beginning at target
 					if(mode == 'draw') {
-						// return lookup[''];
 						let lo = {link: linkobject(['templink', [[],[]]]), x: event.x, y: event.y};
 						return lo;
 					}
@@ -774,7 +775,13 @@ $(function() {
 	function dragstarted(event) {
 		if(popup_process) clearTimeout(popup_process);
 			
-		if(mode == 'move') {
+		if (action.type == 'box-select') {
+			action.start = vec2(event);
+			action.end = vec2(event);
+			ontick();
+			console.log("DRAGSTART", action)
+		}
+		else if(mode == 'move') {
 			if (!event.active) simulation.alphaTarget(0.5).restart();
 			if(event.subject.link)  {// it's a link
 				event.subject.initial_offset = event.subject.offset;
@@ -782,11 +789,6 @@ $(function() {
 				event.subject.fx = event.subject.x;
 				event.subject.fy = event.subject.y;
 			}
-		}
-		else if (mode == 'select') {
-			select_rect_start = vec2(event);
-			select_rect_end = vec2(event);
-			ontick();
 		}
 		else if (mode == 'draw') {
 			if(event.subject.link)  { // if it's an edge
@@ -804,7 +806,11 @@ $(function() {
 		}
 	}
 	function dragged(event) {
-		if(mode == 'move') {
+		if (action.type == 'box-select') {
+			action.end = vec2(event);
+			ontick();
+		}
+		else if(mode == 'move') {
 			if(event.subject.link)  { // if it's an edge
 				// console.log(event);
 				// event.subject.offset[0] += event.dx;
@@ -814,10 +820,6 @@ $(function() {
 				event.subject.fy = event.y;
 			}
 		} 
-		else if (mode == 'select') {
-			select_rect_end = vec2(event);
-			ontick();
-		}
 		else if (mode == 'draw') {
 			// mouse_pt = vec2(event);
 			lookup["<MOUSE>"] = {x: event.sourceEvent.x,
@@ -831,21 +833,8 @@ $(function() {
 		}
 	}
 	function dragended(event) {
-		if(mode == 'move') {
-			if (!event.active) simulation.alphaTarget(0);
-			
-			if(event.subject.link)  { // if it's an edge
-				// console.log("FINISH DRAG", event);
-				// event.subject.offset = [ 
-				// 		event.subject.initial_offset[0] + event.,
-				// 		event.subject.initial_offset[1] + event.dy ]
-			} else {// it's a node	
-				event.subject.fx = null;
-				event.subject.fy = null;
-			}
-		}
-		else if (mode == 'select') {
-			let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
+		if(action.type == 'box-select') {
+			let [xmin,ymin,w,h] = corners2xywh(action.start, vec2(event));
 			let xmax = xmin + w, 
 				ymax = ymin + h;
 
@@ -885,9 +874,24 @@ $(function() {
 			
 			select_rect_start = null;
 			select_rect_end = null;
+			action = {};
 			restyle_links();
 			ontick();
-		} else if (mode == 'draw' && temp_link) {
+		}
+		if(mode == 'move') {
+			if (!event.active) simulation.alphaTarget(0);
+			
+			if(event.subject.link)  { // if it's an edge
+				// console.log("FINISH DRAG", event);
+				// event.subject.offset = [ 
+				// 		event.subject.initial_offset[0] + event.,
+				// 		event.subject.initial_offset[1] + event.dy ]
+			} else {// it's a node	
+				event.subject.fx = null;
+				event.subject.fy = null;
+			}
+		}
+		else if (mode == 'draw' && temp_link) {
 			let newtgts = [], newsrcs = [];
 			
 			let pickobj = pickN(event);
@@ -900,7 +904,7 @@ $(function() {
 				}
 				
 				newtgts.push(pickobj.id);
-			} else {
+			} else { // no pick object. 
 				pickl = pickL(event, 25);
 				if(pickl) {
 					if(pickl == temp_link.based_on){
@@ -916,6 +920,14 @@ $(function() {
 					// create new edge (Or abandon?)
 					pickobj = new_node(fresh_node_name(), event.x, event.y);
 					if(!newtgts.includes(pickobj.id)) newtgts.push(pickobj.id);
+					
+					
+					// don't bother making a link if it was just a click;
+					// just make the new node.
+					console.log(event, temp_link, action);
+					if(temp_link.srcs.length == 0 && mag(subv(vec2(event), vec2(temp_link))) <= 20) {
+						temp_link = null; ontick();	return;
+					}
 				}
 			}
 			if(event.subject.link) { // event source was a link
@@ -981,7 +993,10 @@ $(function() {
 		// ADD NEW NODE
 		// if(e.ctrlKey || e.metaKey) {
 		if( temp_link ) {
-			newtgt = pickN(e);
+			let newtgt = pickN(e);
+			if(!newtgt && mode == 'draw') {
+				newtgt = new_node(fresh_node_name(), event.x, event.y);
+			}
 			if(newtgt) {
 				if(!e.shiftKey) {
 					new_tgts = temp_link.tgts.slice(1);
@@ -989,11 +1004,11 @@ $(function() {
 					new_link(temp_link.srcs, new_tgts, fresh_label(), [temp_link.x, temp_link.y]);
 					temp_link = null;
 				}
-				 else {
+				else {
 					temp_link.tgts.push(newtgt.id);
 				}
 			}	
-		} else if(action && action.type == 'move') {
+		} else if(action.type == 'move') {
 			mouse_end = vec2(lookup['<MOUSE>']);
 			
 			action.targets.forEach(n => {
@@ -1014,10 +1029,7 @@ $(function() {
 			// for(let n of action.targets) {
 			// 
 			// }
-			
-			
-			
-			action = null;
+			action = {};
 			restyle_nodes();
 			
 		} else if(mode == 'move') { // selection in manipulate mode
@@ -1044,12 +1056,13 @@ $(function() {
 				restyle_nodes();
 				restyle_links();
 			}
-		} else if(mode == 'select'){
-			let link = pickL(e);
-			if(link) link.selected = !link.selected;
-			// console.log("[Click] " + (link.selected?"":"un")+"selecting  ", link.label, e);
-			redraw();
 		}
+		// else if(mode == 'select'){
+		// 	let link = pickL(e);
+		// 	if(link) link.selected = !link.selected;
+		// 	// console.log("[Click] " + (link.selected?"":"un")+"selecting  ", link.label, e);
+		// 	redraw();
+		// }
 	});
 	window.addEventListener("keydown", function(event){
 		// console.log(event);		
@@ -1061,18 +1074,39 @@ $(function() {
 				temp_link = null;
 				redraw();
 			}
-			else if( action && action.type == 'move') {
+			else if( action.type == 'move') {
 				action.targets.forEach(n => {
 					[n.x, n.y] = n.old_pos;
 					delete n.old_pos;
 				});
-				action = null;
-				ontick();
 			}
+			action = {};
+			ontick();
 		}
-		else if (event.key == 'b') {
+		else if (event.key == 'a') {
+			let all_selected = true;
+			for(let s of nodes.concat(links)) {
+				if(! s.selected) 
+					all_selected = false;
+				s.selected = true;
+			}
+			if(all_selected) {
+				for(let s of nodes.concat(links))
+					s.selected = false;
+			}
+			restyle_nodes();
+			restyle_links();
+			redraw();
+		}
+		else if (event.key.toLowerCase() == 'b') {
 			// $("#drag-mode-toolbar button[data-mode='select']").click();
-			set_mode('select');
+			// set_mode('select');
+			
+			action = {
+				type: "box-select",
+				end : null,
+				start : null
+			}
 		}
 		else if (event.key == 't') {
 			// start creating arrows.
@@ -1170,7 +1204,7 @@ $(function() {
 		}
 
 		// if ( mode == 'move'  && action) {
-		if(action && action.type == 'move') {
+		if(action.type == 'move') {
 			action.targets.forEach(n => {
 				[n.x, n.y] = addv(n.old_pos, vec2(e), scale(action.mouse_start, -1)); 
 			});
