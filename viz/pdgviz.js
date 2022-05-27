@@ -365,7 +365,7 @@ $(function() {
 			if(!l.display) continue;
 			let lw = l.lw | 2;
 			context.lineWidth = lw * 1.2 + 3;
-			context.strokeStyle = l.selected ? "rgba(230, 150, 50, 0.4)" : "white";
+			context.strokeStyle = l.selected ? "rgba(230, 150, 50, 0.4)" : "rgba(255, 255, 255, 0.7)";
 			context.stroke(l.path2d);
 			
 			context.lineWidth =  lw;
@@ -387,7 +387,7 @@ $(function() {
 			let tlpath = compute_link_shape(temp_link.srcs, temp_link.tgts, midpt);
 			
 			context.lineWidth = 3;
-			context.strokeStyle = "white";
+			context.strokeStyle = "rgba(255,255,255,0.4)";
 			context.stroke( tlpath )
 			
 			context.lineWidth = 1.5;
@@ -410,6 +410,18 @@ $(function() {
 			// context.restore();
 		}
 		
+		
+		//DEBUG: Draw ex and ey of nodes
+		context.fillStyle="#A4C";
+
+		for (let n of nodes) {
+			if(n.ex && n.ey) {
+				context.beginPath();
+				context.arc(n.ex, n.ey, 7, 0, 2 * Math.PI);
+				context.fill();
+			}
+		}
+		
 		/// Draw the invisible product nodes + make sure no node goes off screen.
 		context.globalAlpha = 0.5;
 		context.lineWidth = 2;
@@ -426,18 +438,16 @@ $(function() {
 				context.stroke();				
 			}
 		});
+
+		context.fillStyle="#888";
 		
 		//draw the linknodes 
 		linknodes.forEach(function(n) {
-			context.beginPath();
-		
-			if( n.selected )
-				context.strokeStyle="#1AE";
-			else context.strokeStyle="#A4C";
-		
 			context.moveTo(n.x, n.y);
-			context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
-			context.stroke();				
+			context.beginPath();
+			// context.fillStyle="#A4C";
+			context.arc(n.x, n.y, 7, 0, 2 * Math.PI);
+			context.fill();				
 		});
 		// context.globalAlpha = 1;
 		context.restore();
@@ -467,7 +477,7 @@ $(function() {
 		// }
 	}
 	function midpoint_aligning_force(alpha) {
-		let strength = 0.1 // 0.35
+		let strength = 0.3 // 0.35
 		for (let ln of linknodes) {
 			let l = ln.link;
 			if(l.srcs.length ==0) continue;
@@ -537,24 +547,34 @@ $(function() {
 		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
 		// 		.strength(0.3).distance(40).iterations(2))
 		// .force("avgpos_align", multi_avgpos_alignment_force)
-		.force("charge", d3.forceManyBody()
-			// .strength(n => n.display ? -100 : 0)
-			// .strength(n => n.link || n.components ? 0 : -120)
-			.strength(n => (n.link || !n.display) ? 0 : -100)
-			.distanceMax(150)
-		)
-		.force("midpt_align", midpoint_aligning_force)
+		// .force("charge", d3.forceManyBody()
+		// 	// .strength(n => n.display ? -100 : 0)
+		// 	// .strength(n => n.link || n.components ? 0 : -120)
+		// 	.strength(n => (n.link || !n.display) ? 0 : -100)
+		// 	.distanceMax(150)
+		// )
+		// .force("linkcharge", d3.forceManyBody()
+		// 	// .strength(n => n.display ? -100 : 0)
+		// 	// .strength(n => n.link || n.components ? 0 : -120)
+		// 	.strength(n => (n.link) ? -100 : 0)
+		// 	.distanceMax(150)
+		// )
+		// .force("midpt_align", midpoint_aligning_force)
 		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 		// 	// .strength(l => 70/l.separation)
 		// 	.distance(l => l.separation).iterations(3))
 		.force("bipartite", custom_link_force(mk_bipartite_links(links)).id(l => l.id)
-			.distance(l => [l.separation, l.separation]).iterations(3))
+			// .distance(l => [l.separation*1, l.separation*1]).iterations(3))
+			.distance(l => [l.separation*0.9, l.separation*1.2]).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 		// 		.strength(0.5).iterations(5))
-		.force("nointersect", d3.forceCollide().radius(
-					n => n.display ? n.w/2 : (n.link ? 10 : 0))
+		// .force("nointersect", d3.forceCollide().radius(
+		// 			n => n.display ? n.w/2 : (n.link ? 5 : 0))
+		// 		.strength(1).iterations(5))
+		.force("nointersect", custom_collide_force().radius(
+					n => n.display ? n.w/2 : (n.link ? 5 : 0))
 				.strength(1).iterations(5))
-		.force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.1))
+		// .force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.1))
 		.on("tick", ontick)
 		.stop();
 	simulation.alphaDecay(0.05);
@@ -791,6 +811,8 @@ $(function() {
 			console.log("DRAGSTART", action)
 		}
 		else if(mode == 'move') {
+			// if there are no other drag handlers currently firing.
+			// apparently useful mostly in multi-touch scenarios.
 			if (!event.active) simulation.alphaTarget(0.5).restart();
 			if(event.subject.link)  {// it's a link
 				event.subject.initial_offset = event.subject.offset;
@@ -815,6 +837,7 @@ $(function() {
 		}
 	}
 	function dragged(event) {
+		// console.log(event);
 		if (action.type == 'box-select') {
 			action.end = vec2(event);
 			ontick();
@@ -966,10 +989,10 @@ $(function() {
 			// EXPANDING CODE
 			if(!obj.expanded) {
 				// simulation.stop();
-				obj.expanded = true;
+				// obj.expanded = true;
 				obj.old_wh = [obj.w, obj.h];
-				[obj.w, obj.h] = [800,300];
-				[obj.fx, obj.fy] = [obj.x, obj.y];
+				[obj.w, obj.h] = [300,200];
+				// [obj.fx, obj.fy] = [obj.x, obj.y];
 				
 				for(let ln of linknodes) {
 					// if l.srcs or l.tgts includes n,

@@ -1,3 +1,8 @@
+
+function jiggle(random) {
+    return (random()-0.5) *1E6;
+}
+
 function custom_link_force(blinks) {
     var id = l => l.indx,
         strength = (l) =>  1 / Math.min(count[l.source.index], count[l.target.index]),
@@ -9,7 +14,7 @@ function custom_link_force(blinks) {
         count,
         bias,
         random,
-        iterations = 5;
+        iterations = 3;
         
 
     function force(alpha) {
@@ -19,17 +24,15 @@ function custom_link_force(blinks) {
                 let bl = blinks[i];
                 let source = bl.source, target = bl.target;
                 let dx = target.x + target.vx - source.x - source.vx 
-                    || Math.random() * 10 - 5;
-                    //|| jiggle(random);
+                    || jiggle(random);
                 let dy = target.y + target.vy - source.y - source.vy 
-                    //|| jiggle(random);
-                    || Math.random() * 10 - 5;
+                    || jiggle(random);
                 let r = Math.sqrt(dx * dx + dy * dy);
                 let min_dist = bl.min_dist || min_dists[i];
                 let max_dist = bl.max_dist || max_dists[i];
                 
                 // console.log(min_dist,max_dist, dx,dy,r);
-                r = (r - clamp(r, min_dist, max_dist)) / r * alpha * 1;
+                r = (r - clamp(r, min_dist, max_dist)) / r * alpha * strengths[i];
                 
                 // console.log(min_dist,max_dist, dx,dy,r);
 
