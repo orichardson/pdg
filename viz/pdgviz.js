@@ -1,5 +1,7 @@
-console.log("pdgvz.js");
+//A web-page opened via the file:// protocol cannot use import / export.
+// import defaultExport from '/link-modified.js';
 
+console.log("pdgvz.js");
 // var hypergraph = { // BN1.json
 // 	nodes : ["PS", "S", "SH", "C", "T", "Test 1", "Test 2"], 
 // 	hedges : {0: [[], ["PS"]], 
@@ -296,16 +298,19 @@ $(function() {
 			// 		.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1] * 1.8,
 			// 		// lookup[s].x, lookup[s].y,
 			// 		mid[0], mid[1]);
-			lpath.bezierCurveTo(
-					// avgtgt[0], avgtgt[1],
-					0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.5,
-					0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.5,
-					.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0],
-					.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1],
-					// lookup[s].x, lookup[s].y,
-					mid[0], mid[1]);
+			
+			
+			// lpath.bezierCurveTo(
+			// 		// avgtgt[0], avgtgt[1],
+			// 		0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.5,
+			// 		0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.5,
+			// 		.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0],
+			// 		.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1],
+			// 		// lookup[s].x, lookup[s].y,
+			// 		mid[0], mid[1]);
 
-			// lpath.lineTo(mid[0], mid[1]);
+			lpath.moveTo(...startpt);
+			lpath.lineTo(mid[0], mid[1]);
 		});
 		tgt.forEach( function(t) {
 			// lpath.moveTo( true_mid[0], true_mid[1] );
@@ -423,17 +428,17 @@ $(function() {
 		});
 		
 		//draw the linknodes 
-		// linknodes.forEach(function(n) {
-		// 	context.beginPath();
-		// 
-		// 	if( n.selected )
-		// 		context.strokeStyle="#1AE";
-		// 	else context.strokeStyle="#A4C";
-		// 
-		// 	context.moveTo(n.x, n.y);
-		// 	context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
-		// 	context.stroke();				
-		// });
+		linknodes.forEach(function(n) {
+			context.beginPath();
+		
+			if( n.selected )
+				context.strokeStyle="#1AE";
+			else context.strokeStyle="#A4C";
+		
+			context.moveTo(n.x, n.y);
+			context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
+			context.stroke();				
+		});
 		// context.globalAlpha = 1;
 		context.restore();
 	}
@@ -462,16 +467,18 @@ $(function() {
 		// }
 	}
 	function midpoint_aligning_force(alpha) {
+		let strength = 0.1 // 0.35
 		for (let ln of linknodes) {
 			let l = ln.link;
 			if(l.srcs.length ==0) continue;
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
-			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * 0.35 *alpha;
-			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * 0.35 *alpha;
+			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength *alpha;
+			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength *alpha;
 		}
 	}
+	
 	function mk_bipartite_links(links){
 		bipartite_links = []
 		// for( let l of links) {
@@ -537,15 +544,17 @@ $(function() {
 			.distanceMax(150)
 		)
 		.force("midpt_align", midpoint_aligning_force)
-		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
-			.strength(1).distance(l => l.separation).iterations(3))
+		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
+		// 	// .strength(l => 70/l.separation)
+		// 	.distance(l => l.separation).iterations(3))
+		.force("bipartite", custom_link_force(mk_bipartite_links(links)).id(l => l.id)
+			.distance(l => [l.separation, l.separation]).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 		// 		.strength(0.5).iterations(5))
 		.force("nointersect", d3.forceCollide().radius(
 					n => n.display ? n.w/2 : (n.link ? 10 : 0))
-				.strength(0.5).iterations(5))
-		.force("center",
-			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.1))
+				.strength(1).iterations(5))
+		.force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.1))
 		.on("tick", ontick)
 		.stop();
 	simulation.alphaDecay(0.05);
@@ -605,13 +614,13 @@ $(function() {
 			.classed("node", true);
 			// .call(simulation.drag);
 		newnodeGs.append("rect").classed("nodeshape", true);
-		newnodeGs.append("text");
-		
+		newnodeGs.append("text");		
 		
 		nodedata.exit().each(remove_node)
 			.remove();
 		
 		nodedata = nodedata.merge(newnodeGs);
+		nodedata.classed('expanded', n => n.expanded)
 		nodedata.selectAll("rect.nodeshape")
 			.attr('width', n => n.w).attr('x', n => -n.w/2)
 			.attr('height', n => n.h).attr('y', n => -n.h/2)
@@ -887,8 +896,10 @@ $(function() {
 				// 		event.subject.initial_offset[0] + event.,
 				// 		event.subject.initial_offset[1] + event.dy ]
 			} else {// it's a node	
-				event.subject.fx = null;
-				event.subject.fy = null;
+				if(!event.subject.expanded) {
+					event.subject.fx = null;
+					event.subject.fy = null;
+				}
 			}
 		}
 		else if (mode == 'draw' && temp_link) {
@@ -952,21 +963,45 @@ $(function() {
 	canvas.addEventListener("dblclick", function(e) {
 		let obj = pickN(e), link = pickL(e);
 		if(obj) { // rename selected node
-			let name = promptForName("Enter New Variable Name", obj.id, nodes.map(n=>n.id));
-			if(!name) return;
-			
-			let replacer = nid => (nid == obj.id) ? name : nid;
-			//TODO this will leave parentLinks in the dust...
-			for(let l of links) {
-				l.srcs = l.srcs.map(replacer);
-				l.tgts = l.tgts.map(replacer);
-				l.source = l.srcs.join(",");
-				l.target = l.tgts.join(",");
+			// EXPANDING CODE
+			if(!obj.expanded) {
+				// simulation.stop();
+				obj.expanded = true;
+				obj.old_wh = [obj.w, obj.h];
+				[obj.w, obj.h] = [800,300];
+				[obj.fx, obj.fy] = [obj.x, obj.y];
+				
+				for(let ln of linknodes) {
+					// if l.srcs or l.tgts includes n,
+					// then set strength to zero?
+					// set distance?
+				}
 			}
-			delete lookup[obj.id];
-			obj.id = name;
-			lookup[name] = obj;
+			else {
+				obj.expanded = false;
+				[obj.w, obj.h] = obj.old_wh;
+				delete obj.fx
+				delete obj.fy;
+			}
 			align_node_dom();
+			
+			
+			//RENAMING CODE
+			// let name = promptForName("Enter New Variable Name", obj.id, nodes.map(n=>n.id));
+			// if(!name) return;
+			// 
+			// let replacer = nid => (nid == obj.id) ? name : nid;
+			// //TODO this will leave parentLinks in the dust...
+			// for(let l of links) {
+			// 	l.srcs = l.srcs.map(replacer);
+			// 	l.tgts = l.tgts.map(replacer);
+			// 	l.source = l.srcs.join(",");
+			// 	l.target = l.tgts.join(",");
+			// }
+			// delete lookup[obj.id];
+			// obj.id = name;
+			// lookup[name] = obj;
+			// align_node_dom();
 		} else if(link) { // rename selected cpd
 			
 			
