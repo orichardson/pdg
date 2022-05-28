@@ -49,6 +49,15 @@
 	font-family: serif;
 	stroke: white;
 }
+.node.expanded.selected text {
+	/* text-anchor:middle; */
+	/* dominant-baseline : middle; */
+	font-family: serif;
+	fill: orange;
+	stroke: red;
+	font-weight:bold;
+}
+
 
 .linknode text {
 	text-anchor:middle;

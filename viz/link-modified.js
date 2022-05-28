@@ -15,25 +15,48 @@ function custom_link_force(blinks) {
         bias,
         random,
         iterations = 3;
+    var rect_pad_mode = true;
         
+    const jiggl = () => (random()-0.5) *1E6;
+    function vvec2(obj) {
+        return [obj.x + obj.vx || jiggl(),
+                obj.y + obj.vy || jiggl() ];
+    }
+    function w_h(obj) {
+        return [obj.w, obj.h]
+    }
+
 
     function force(alpha) {
+        
         // console.log(distances);
         for (var k = 0; k < iterations; ++k) {
             for(var i = 0; i < blinks.length; i++) {
                 let bl = blinks[i];
                 let source = bl.source, target = bl.target;
-                let dx = target.x + target.vx - source.x - source.vx 
-                    || jiggle(random);
-                let dy = target.y + target.vy - source.y - source.vy 
-                    || jiggle(random);
-                let r = Math.sqrt(dx * dx + dy * dy);
+                var dx,dy;
+                
+                if(rect_pad_mode) {
+                    let a = sqshortened_end(vvec2(source), vvec2(target), w_h(target)),
+                        b = sqshortened_end(vvec2(target), vvec2(source), w_h(source));
+                        
+                    [dx,dy] = subv(a,b);
+                    // console
+                } else {
+                    // dx = target.x + target.vx - source.x - source.vx 
+                    //     || jiggl();
+                    // dy = target.y + target.vy - source.y - source.vy 
+                    //     || jiggl();
+                    [dx, dy] = subv(vvec2(target), vvec2(source));
+                }
+                let r = Math.sqrt(dx * dx + dy * dy); 
+                
                 let min_dist = bl.min_dist || min_dists[i];
                 let max_dist = bl.max_dist || max_dists[i];
+
                 
                 // console.log(min_dist,max_dist, dx,dy,r);
                 r = (r - clamp(r, min_dist, max_dist)) / r * alpha * strengths[i];
-                
                 // console.log(min_dist,max_dist, dx,dy,r);
 
                 dx *= r, dy *= r;
@@ -100,5 +123,8 @@ function custom_link_force(blinks) {
             (distance = typeof _ === "function" ? _ : () => [_,_] , initializeDistance(), force)
             : distance;
     };
+    force.rect_pad_mode = function( _ ) {
+        return arguments.length ? (rect_pad_mode = _, force): rect_pad_mode;
+    }
     return force
 }

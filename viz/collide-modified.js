@@ -20,10 +20,8 @@ function custom_collide_force() {
 		var i, n = nodes.length,
 			tree,
 			node,
-			xi,
-			yi,
-			ri,
-			ri2;
+			xi,yi, 
+			wi,hi;
 
 		for (var k = 0; k < iterations; ++k) {
 			tree = d3.quadtree(nodes, d => d.x + d.vx, d => d.y + d.vy).visitAfter(prepare);
@@ -43,16 +41,12 @@ function custom_collide_force() {
 			let rx = (wi+quad.w)/2, ry = (hi+quad.h)/2;
 			if (data) {
 				// why is this so impiortant?
-				if (data.index > node.index) {
-				// if (data.index < node.index) {
+				// if (data.index > node.index) {
+				if (data.index < node.index) {
 				// if(true){
 					// corner point
 					let [datx,daty] = [data.x+data.vx, data.y+data.vy]
 					let [ex,ey] = sqshortened_end([xi,yi], [datx,daty], [data.w, data.h], 0) 
-					if(i == 0 && data.index==2) {
-						data.ex = ex;
-						data.ey = ey;
-					}
 					// let edge2 = sqshortened_end([xi,yi], [data.x+data.vx, data.y+data.vy], [data.w, data.h]) 
 
 					// var x = xi - data.x - data.vx,
@@ -64,15 +58,25 @@ function custom_collide_force() {
 					// let [ex2,ey2] = sqshortened_end([ex,ey], [xi,yi], [wi,hi])
 					let [ex2,ey2] = sqshortened_end([datx,daty], [xi,yi], [wi,hi], 0)
 					
-					if(i == 0 && data.index==2) {
-						data.ex2 = ex2;
-						data.ey2 = ey2;
+					
+					if(i == 0){
+						[node.ex, node.ey] = [ex,ey];
+						[node.ex2, node.ey2] = [ex2,ey2];
 					}
+					
 										
-					if( (ex <= xi + wi/2 && ex >= xi - wi/2 
-							&& ey <= yi + wi/2 && ey >= yi - wi/2)
-						|| (ex2 <= datx + data.w/2 && ex2 >= datx -data.w/2 
-							&& ey2 <= daty + data.h/2 && ey2 >= daty -data.h/2)) {
+					// if( (ex < xi + wi/2 && ex > xi - wi/2 
+					// 		&& ey < yi + wi/2 && ey > yi - wi/2)
+					// 	|| (ex2 < datx + data.w/2 && ex2 > datx -data.w/2 
+					// 		&& ey2 < daty + data.h/2 && ey2 > daty -data.h/2)) {
+					// if( (ex2 < xi + wi/2 && ex2 > xi - wi/2 
+					// 		&& ey2 < yi + wi/2 && ey2 > yi - wi/2)
+					// 	|| (ex < datx + data.w/2 && ex > datx - data.w/2 
+					// 		&& ey < daty + data.h/2 && ey > daty - data.h/2)) {
+					if( (ex < xi + wi/2 && ex > xi - wi/2 
+					 		&& ey < yi + wi/2 && ey > yi - wi/2)
+					 	|| (ex2 < datx + data.w/2 && ex2 > datx -data.w/2 
+					 		&& ey2 < daty + data.h/2 && ey2 > daty -data.h/2)) {
 
 						// if (x === 0) x = jiggle(random), l += x * x;
 						// if (y === 0) y = jiggle(random), l += y * y;
@@ -85,14 +89,9 @@ function custom_collide_force() {
 						let dx = datx - xi - rx*sgn(datx - xi),
 							dy = daty - yi - ry*sgn(daty - yi);
 						
-						if(i == 0 && data.index==2) {
-							// console.log(xi,yi, datx,daty, rx,ry, dx, dy);
-							// console.log(dx,dy);
-						}
 						
 						if(dx * dx > dy*dy) dx = 0;
-						else dy = 0;
-						
+						else dy = 0;						
 						
 						// let factor = Math.sqrt(dx*dx + dy*dy) / (Math.max(datx,daty)) * strength;
 						// let factorx = (rx - dx) / dx *strength,
@@ -103,8 +102,8 @@ function custom_collide_force() {
 						dx *= factorx;
 						dy *= factory;
 						
-						// let portion = data.w*data.h / (data.w*data.h + wi*hi);
-						let portion = 0.5;
+						let portion = data.w*data.h / (data.w*data.h + wi*hi);
+						// let portion = 0.5;
 						
 						node.vx += dx * portion;
 						node.vy += dy * portion;
@@ -115,8 +114,8 @@ function custom_collide_force() {
 				return;
 			}
 			// let rx = (wi+quad.w)/2, ry = (hi+quad.h)/2;
-			// return x0 > xi + rx || x1 < xi - rx || y0 > yi + ry || y1 < yi - ry;
-			return false;
+			return x0 > xi + rx || x1 < xi - rx || y0 > yi + ry || y1 < yi - ry;
+			// return false;
 		}
 	}
 
@@ -146,30 +145,22 @@ function custom_collide_force() {
 		}
 	}
 
-  function initialize() {
-	if (!nodes) return;
-	// var i, n = nodes.length, node;
-	// radii = new Array(n);
-	// for (i = 0; i < n; ++i) node = nodes[i], radii[node.index] = +radius(node, i, nodes);
-  }
+	force.initialize = function(_nodes, _random) {
+		nodes = _nodes;
+		random = _random;
+	};
 
-  force.initialize = function(_nodes, _random) {
-	nodes = _nodes;
-	random = _random;
-	initialize();
-  };
+	force.iterations = function(_) {
+		return arguments.length ? (iterations = +_, force) : iterations;
+	};
 
-  force.iterations = function(_) {
-	return arguments.length ? (iterations = +_, force) : iterations;
-  };
-
-  force.strength = function(_) {
-	return arguments.length ? (strength = +_, force) : strength;
-  };
-
-  force.radius = function(_) {
-	return arguments.length ? (radius = typeof _ === "function" ? _ : constant(+_), initialize(), force) : radius;
-  };
-
-  return force;
+	force.strength = function(_) {
+		if(arguments.length) {
+			strength = +_; 
+			return force;
+		}
+		return strength
+	};
+	
+	return force;
 }
