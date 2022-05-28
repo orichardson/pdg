@@ -132,6 +132,9 @@ $(function() {
 		// clear state
 		parentLinks = [];
 		lookup = [];
+		nodes = [];
+		linknodes = [];
+		// align_node_dom();
 		// load nodes
 		nodes = hypergraph.nodes.map( function(varname) {
 			let ob = {id: varname, values: [0,1],
@@ -165,10 +168,20 @@ $(function() {
 				Object.assign(ln, ob);
 			});
 		} 
+		if(hypergraph.viz && hypergraph.viz.links) {
+			hypergraph.viz.links.forEach( function([label, ob]) {
+				let l = links.find(l => l.label == label);
+				Object.assign(l, ob);
+			});
+		} 
+		// 
 		
 		// if simulation exists, update nodes & edges of simulation + restart.
 		if(typeof simulation != "undefined") {
 			simulation.nodes(nodes.concat(linknodes));
+			restyle_nodes();
+			restyle_links();
+
 			simulation.force('bipartite').links(mk_bipartite_links(links));
 			
 			if( ! hypergraph.viz ){
@@ -191,12 +204,15 @@ $(function() {
 			hedges : hedges,
 			viz : {
 				nodes : Object.fromEntries(nodes.map(
-						n => [n.id, cloneAndPluck(n, ["x", "y", "w", "h"])]
+						n => [n.id, cloneAndPluck(n, ["x", "y", "w", "h", "selected", "expanded"])]
 						// n => [n.id, n]
 					)),
 				linknodes : linknodes.map(
 					// ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h"] )]
-					ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h"] )]
+					ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h", "sep" ] )]
+				),
+				links : links.map(
+					l =>  [l.label, cloneAndPluck(l, ["selected" ] )]
 				)
 			}
 		}
@@ -300,17 +316,17 @@ $(function() {
 			// 		mid[0], mid[1]);
 			
 			
-			// lpath.bezierCurveTo(
-			// 		// avgtgt[0], avgtgt[1],
-			// 		0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.5,
-			// 		0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.5,
-			// 		.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0],
-			// 		.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1],
-			// 		// lookup[s].x, lookup[s].y,
-			// 		mid[0], mid[1]);
+			lpath.bezierCurveTo(
+					// avgtgt[0], avgtgt[1],
+					0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.5,
+					0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.5,
+					.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0],
+					.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1],
+					// lookup[s].x, lookup[s].y,
+					mid[0], mid[1]);
 
-			lpath.moveTo(...startpt);
-			lpath.lineTo(mid[0], mid[1]);
+			// lpath.moveTo(...startpt);
+			// lpath.lineTo(mid[0], mid[1]);
 		});
 		tgt.forEach( function(t) {
 			// lpath.moveTo( true_mid[0], true_mid[1] );
@@ -412,15 +428,21 @@ $(function() {
 		
 		
 		//DEBUG: Draw ex and ey of nodes
-		context.fillStyle="#A4C";
-
-		for (let n of nodes) {
-			if(n.ex && n.ey) {
-				context.beginPath();
-				context.arc(n.ex, n.ey, 7, 0, 2 * Math.PI);
-				context.fill();
-			}
-		}
+		// 
+		// for (let n of nodes) {
+		// 	if(n.ex && n.ey) {
+		// 		context.fillStyle="#A4C";
+		// 		context.beginPath();
+		// 		context.arc(n.ex, n.ey, 7, 0, 2 * Math.PI);
+		// 		context.fill();
+		// 	}
+		// 	if(n.ex2 && n.ey2) {
+		// 		context.fillStyle="#CA4";
+		// 		context.beginPath();
+		// 		context.arc(n.ex2, n.ey2, 7, 0, 2 * Math.PI);
+		// 		context.fill();
+		// 	}
+		// }
 		
 		/// Draw the invisible product nodes + make sure no node goes off screen.
 		context.globalAlpha = 0.5;
@@ -442,13 +464,13 @@ $(function() {
 		context.fillStyle="#888";
 		
 		//draw the linknodes 
-		linknodes.forEach(function(n) {
-			context.moveTo(n.x, n.y);
-			context.beginPath();
-			// context.fillStyle="#A4C";
-			context.arc(n.x, n.y, 7, 0, 2 * Math.PI);
-			context.fill();				
-		});
+		// linknodes.forEach(function(n) {
+		// 	context.moveTo(n.x, n.y);
+		// 	context.beginPath();
+		// 	// context.fillStyle="#A4C";
+		// 	context.arc(n.x, n.y, 7, 0, 2 * Math.PI);
+		// 	context.fill();				
+		// });
 		// context.globalAlpha = 1;
 		context.restore();
 	}
@@ -547,19 +569,19 @@ $(function() {
 		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
 		// 		.strength(0.3).distance(40).iterations(2))
 		// .force("avgpos_align", multi_avgpos_alignment_force)
-		// .force("charge", d3.forceManyBody()
-		// 	// .strength(n => n.display ? -100 : 0)
-		// 	// .strength(n => n.link || n.components ? 0 : -120)
-		// 	.strength(n => (n.link || !n.display) ? 0 : -100)
-		// 	.distanceMax(150)
-		// )
+		.force("charge", d3.forceManyBody()
+			// .strength(n => n.display ? -100 : 0)
+			// .strength(n => n.link || n.components ? 0 : -120)
+			.strength(n => (n.link || !n.display) ? 0 : -100)
+			.distanceMax(150)
+		)
 		// .force("linkcharge", d3.forceManyBody()
 		// 	// .strength(n => n.display ? -100 : 0)
 		// 	// .strength(n => n.link || n.components ? 0 : -120)
 		// 	.strength(n => (n.link) ? -100 : 0)
 		// 	.distanceMax(150)
 		// )
-		// .force("midpt_align", midpoint_aligning_force)
+		.force("midpt_align", midpoint_aligning_force)
 		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 		// 	// .strength(l => 70/l.separation)
 		// 	.distance(l => l.separation).iterations(3))
@@ -988,11 +1010,11 @@ $(function() {
 		if(obj) { // rename selected node
 			// EXPANDING CODE
 			if(!obj.expanded) {
-				// simulation.stop();
-				// obj.expanded = true;
+				simulation.stop();
+				obj.expanded = true;
 				obj.old_wh = [obj.w, obj.h];
 				[obj.w, obj.h] = [300,200];
-				// [obj.fx, obj.fy] = [obj.x, obj.y];
+				[obj.fx, obj.fy] = [obj.x, obj.y];
 				
 				for(let ln of linknodes) {
 					// if l.srcs or l.tgts includes n,
