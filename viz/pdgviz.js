@@ -430,18 +430,18 @@ $(function() {
 		
 		
 		//DEBUG: Draw ex and ey of nodes
-		// 
+		context.globalAlpha = 0.7;
 		for (let n of nodes) {
 			if(n.ex && n.ey) {
 				context.fillStyle="#A4C";
 				context.beginPath();
-				context.arc(n.ex, n.ey, 7, 0, 2 * Math.PI);
+				context.arc(n.ex, n.ey, 10, 0, 2 * Math.PI);
 				context.fill();
 			}
 			if(n.ex2 && n.ey2) {
 				context.fillStyle="#CA4";
 				context.beginPath();
-				context.arc(n.ex2, n.ey2, 7, 0, 2 * Math.PI);
+				context.arc(n.ex2, n.ey2, 10, 0, 2 * Math.PI);
 				context.fill();
 			}
 		}
@@ -1148,7 +1148,7 @@ $(function() {
 		// }
 	});
 	window.addEventListener("keydown", function(event){
-		// console.log(event);		
+		console.log(event);		
 		if(event.key == 'Escape'){
 			if ( temp_link ) {
 				if(temp_link.based_on ) 
@@ -1191,7 +1191,7 @@ $(function() {
 				start : null
 			}
 		}
-		else if (event.key == 't') {
+		else if (event.key.toLowerCase() == 't') {
 			// start creating arrows.
 			// 1. Create new arrow from selection at tail
 			src = nodes.filter( n => n.selected ).map( n => n.id );
@@ -1216,7 +1216,7 @@ $(function() {
 				// TODO shift selection to backup selection (red color)
 			}
 		}
-		else if (event.key == 'x') {
+		else if (event.key.toLowerCase() == 'x') {
 			simulation.stop();
 			nodes = nodes.filter(n => !n.selected);
 			// for(let i = 0; i < )

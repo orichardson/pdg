@@ -59,9 +59,10 @@ function custom_collide_force() {
 					let [ex2,ey2] = sqshortened_end([datx,daty], [xi,yi], [wi,hi], 0)
 					
 					
-					if(i == 0){
-						[node.ex, node.ey] = [ex,ey];
-						[node.ex2, node.ey2] = [ex2,ey2];
+					if(node.id == 'B') {
+						// console.log("adding ex,ey to ", data);
+						[data.ex, data.ey] = [ex,ey];
+						[data.ex2, data.ey2] = [ex2,ey2];
 					}
 					
 										

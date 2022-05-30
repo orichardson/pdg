@@ -43,6 +43,11 @@
 	font-family: serif;
 	fill : black;
 }
+
+.node.expanded > .nodeshape {
+	/* fill : rb(230, 150, 50, 1); */
+	fill: rgba(100,100,100, 0.8);
+}
 .node.expanded text {
 	/* text-anchor:middle; */
 	/* dominant-baseline : middle; */
@@ -99,10 +104,6 @@
 	stroke: #863;
 }
 
-.node.expanded > .nodeshape {
-	/* fill : rb(230, 150, 50, 1); */
-	fill: #111;
-}
 
 .ghost {
 	pointer-events: none;
