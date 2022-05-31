@@ -86,9 +86,16 @@ function sqshortened_end(from, to, [w,h], extra=0) {
 	if(delta[0] == 0 && delta[1] == 0) {
 		return addv(from, [w/2, h/2]);
 	}
+    
+    // if 
+    
 	sqshortdelta = [
 		delta[0] - magclamp(delta[0] * h / Math.abs(delta[1]), w)/2,
 		delta[1] - magclamp(delta[1] * w / Math.abs(delta[0]), h)/2];
+    // sqshortdelta = [
+	// 	delta.x - clamp(delta.x * h / Math.abs(delta.y), -w, w)/2,
+	// 	delta.y - clamp(delta.y * w / Math.abs(delta.x), -h, h)/2];
+        
 	return addv(from,sqshortdelta);
 }
 function arrowpts(from, to, arrscale=20, narrow=0.75) {
