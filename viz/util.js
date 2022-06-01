@@ -35,14 +35,6 @@ function download_JSON(obj, fname) {
 }
 
 // ## BASIC VECTOR OPS
-function  corners2xywh(start, end) {
-	xmin = Math.min(start[0], end[0]);
-	xmax = Math.max(start[0], end[0]);
-	ymin = Math.min(start[1], end[1]);
-	ymax = Math.max(start[1], end[1]);
-	// return [xmin,xmax,ymin,ymax];
-	return [xmin, ymin, xmax-xmin, ymax-ymin];
-}
 function vec2( obj ) {
 	return [obj.x, obj.y];
 }
@@ -78,6 +70,20 @@ function sgn(x) {
 	if(x < 0) return -1;
 	return 0;
 }
+// ## GEOMETRY
+function corners2xywh(start, end) {
+	xmin = Math.min(start[0], end[0]);
+	xmax = Math.max(start[0], end[0]);
+	ymin = Math.min(start[1], end[1]);
+	ymax = Math.max(start[1], end[1]);
+	// return [xmin,xmax,ymin,ymax];
+	return [xmin, ymin, xmax-xmin, ymax-ymin];
+}
+function pt_in_rect(pt, rectobj) {
+    return (Math.abs(pt[0] - rectobj.x) < rectobj.w/2) &&
+           (Math.abs(pt[1] - rectobj.y) < rectobj.h/2);
+}
+
 // ## More Complex Graphics Computations
 function sqshortened_end(from, to, [w,h], extra=0) {
 	delta = subv(to,from);
@@ -104,4 +110,14 @@ function arrowpts(from, to, arrscale=20, narrow=0.75) {
 	halfortho = scale(ortho,0.5);
 	return [ addv(base, ortho), subv(base, ortho),
 			addv(base,halfortho), subv(base,halfortho) ];
+}
+
+
+// ## FORCE MODIFICATION TO SUBSET
+function filtered_force(force, nodeFilter) {
+    let init = force.initialize;
+    force.initialize = function(_nodes, _random) {
+        init(_nodes.filter(nodeFilter), _random);
+    }
+    return force;
 }

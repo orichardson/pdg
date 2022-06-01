@@ -43,6 +43,22 @@ function custom_link_force(blinks) {
                     b = sqshortened_end(vvec2(target), vvec2(source), w_h(source));
                         
                     [dx,dy] = subv(a,b);
+                    
+                    // reset if a (on the boundary of tgt) is inside src, or vice versa
+                    // if( Math.abs(a[0] - source.x) < source.w/2 )
+                    if(pt_in_rect(a, source) || pt_in_rect(b,target)) {
+                        // console.log("source: "+source.id, "target: "+target.id)
+                        // console.log("tgt.∂ ∈ src? ", pt_in_rect(a, source), 
+                        //     "| x? " +( Math.abs(a[0] - source.x) < source.w/2),
+                        //     "| y? " +( Math.abs(a[1] - source.y) < source.h/2))
+                        // console.log("src.∂ ∈ tgt? ", pt_in_rect(b, target),
+                        //     "| x? " +( Math.abs(b[0] - target.x) < target.w/2),
+                        //     "| y? " +( Math.abs(b[1] - target.y) < target.h/2))
+                        // dx = jiggl(), dy = jiggl();
+                        continue;
+                        // dx += 
+                    }
+    
                 } else {
                     // dx = target.x + target.vx - source.x - source.vx 
                     //     || jiggl();
@@ -57,12 +73,14 @@ function custom_link_force(blinks) {
 
                 
                 // console.log(min_dist,max_dist, dx,dy,r);
+                // ... but what if 
                 r = (r - clamp(r, min_dist, max_dist)) / r * alpha * strengths[i];
+                // r = (r - min_dist) / r * alpha * strengths[i];
                 // console.log(min_dist,max_dist, dx,dy,r);
 
                 dx *= r, dy *= r;
                 
-                // let b = 0.5; // TODO: make this count ratio as before.
+                // bi = 0.5; // TODO: make this count ratio as before.
                 bi = bias[i]
                 target.vx -= dx * bi;
                 target.vy -= dy * bi;

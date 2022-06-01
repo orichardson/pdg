@@ -36,10 +36,12 @@ hypergraph = {
 
 
 const initw = 50, inith = 40;
-// const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
-// const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
+// const STRETCH_FACTOR = 1
 const STRETCH_FACTOR = 1.2;
 // const STRETCH_FACTOR = 3;
+
+// const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
+// const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
 // const OPT_DIST = { 1:25,  2:35,  3:50, 4: 65, 5:80, 6:95 };
 const OPT_DIST = { 1:25,  2:35,  3:50, 4: 65, 5:80, 6:95 };
 
@@ -144,6 +146,7 @@ $(function() {
 		nodes = [];
 		linknodes = [];
 		align_node_dom();
+		
 		// load nodes
 		nodes = hypergraph.nodes.map( function(varname) {
 			let ob = {id: varname, values: [0,1],
@@ -328,8 +331,10 @@ $(function() {
 			
 			lpath.bezierCurveTo(
 					// avgtgt[0], avgtgt[1],
-					0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.5,
-					0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.5,
+					// 0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0,
+					// 0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0,
+					 0.2*mid[0] + startpt[0]*(0.8) + delta[0] * 0,
+					 0.2*mid[1] + startpt[1]*(0.8) + delta[1] * 0,
 					.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0],
 					.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1],
 					// lookup[s].x, lookup[s].y,
@@ -474,13 +479,13 @@ $(function() {
 		context.fillStyle="#888";
 		
 		//draw the linknodes 
-		linknodes.forEach(function(n) {
-			context.moveTo(n.x, n.y);
-			context.beginPath();
-			// context.fillStyle="#A4C";
-			context.arc(n.x, n.y, 7, 0, 2 * Math.PI);
-			context.fill();				
-		});
+		// linknodes.forEach(function(n) {
+		// 	context.moveTo(n.x, n.y);
+		// 	context.beginPath();
+		// 	// context.fillStyle="#A4C";
+		// 	context.arc(n.x, n.y, 7, 0, 2 * Math.PI);
+		// 	context.fill();				
+		// });
 		// context.globalAlpha = 1;
 		context.restore();
 	}
@@ -517,11 +522,17 @@ $(function() {
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
-			// ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
-			// ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
+			// ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x - ln.vx) * strength * alpha; 
+			// ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y - ln.vy) * strength * alpha;
+			
+			// ln.x += (ln.true_mid[0] + ln.offset[0] - ln.x - ln.vx) * strength * alpha; 
+			// ln.y += (ln.true_mid[1] + ln.offset[1] - ln.y - ln.vy) * strength * alpha;
+			
+			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x - ln.vx) * strength * alpha; 
+			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y - ln.vy) * strength * alpha;
 		
-			ln.x += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
-			ln.y += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
+			// ln.x += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
+			// ln.y += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
 		}
 	}
 	
@@ -574,41 +585,44 @@ $(function() {
 		ontick(); 
 		simulation.alpha(2).restart();
 	} 
-
 	
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
 		//// .force("charge", d3.forceManyBody().strength( -100))
 		// .force("link", d3.forceLink(links).id(l => l.id)
 		// 	.strength(1).distance(110).iterations(3))
 		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
-		// 		.strength(0.3).distance(40).iterations(2))
+		// 		.strength(0.3).distance(40).iterations(2))d
 		// .force("avgpos_align", multi_avgpos_alignment_force)
-		.force("charge", d3.forceManyBody()
+		.force("charge", filtered_force(d3.forceManyBody()
 			// .strength(n => n.display ? -100 : 0)
 			// .strength(n => n.link || n.components ? 0 : -120)
-			.strength(n => (n.link || !n.display) ? 0 : -100)
-			.distanceMax(150) )
-		.force("linkcharge", d3.forceManyBody()
+			// .strength(n => (n.link || !n.display) ? 0 : -100)
+			.strength(-100)
+			.distanceMax(150), n => (!n.link && n.display) ))
+		.force("linkcharge", filtered_force(d3.forceManyBody()
 			// .strength(n => n.display ? -100 : 0)
 			// .strength(n => n.link || n.componebnts ? 0 : -120)
-			.strength(n => (n.link) ? -50 : 0)
-			.distanceMax(30) )
+			.strength(-100)
+			.distanceMax(40),  n => !!n.link))
 		.force("midpt_align", midpoint_aligning_force)
 		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 		// 	// .strength(l => 70/l.separation)
 		// 	.distance(l => l.separation).iterations(3))
 		.force("bipartite", custom_link_force(mk_bipartite_links(links)).id(l => l.id)
 			// .distance(l => [l.separation*1, l.separation*1]).iterations(3))
-			.strength(1)
+			// .strength(1) 
 			.distance(l => [l.separation / STRETCH_FACTOR, 
 							l.separation * STRETCH_FACTOR]).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 		// 		.strength(0.5).iterations(5))
-		// .force("nointersect", d3.forceCollide().radius(
+		// .force("nointersect_old", d3.forceCollide().radius(
 		// 			n => n.display ? n.w/2 : (n.link ? 5 : 0))
-		// 		.strength(1).iterations(5))
-		.force("nointersect", custom_collide_force().strength(1).iterations(3))
-		// .force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.1))
+		// 		.strength(1).iterations(1))
+		.force("nointersect", custom_collide_force()
+			// .nodeFilter(n => !n.link)
+			// .strength(0.7)
+			.iterations(3))
+		// .force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.01))
 		.on("tick", ontick)
 		.stop();
 	simulation.alphaDecay(0.05);
@@ -890,9 +904,9 @@ $(function() {
 			// mouse_pt = vec2(event);
 			lookup["<MOUSE>"] = {x: event.sourceEvent.x,
 							y: event.sourceEvent.y,
-							// w:1,h:1
+							w:1,h:1
 							// setting to negative 9 means the arrow is only shortened 1 pixel.
-							w: -9, h: -9
+							// w: -9, h: -9
 						};
 			// ontick();
 			redraw();
@@ -1092,7 +1106,7 @@ $(function() {
 		if( temp_link ) {
 			let newtgt = pickN(e);
 			if(!newtgt && mode == 'draw') {
-				newtgt = new_node(fresh_node_name(), event.x, event.y);
+				newtgt = new_node(fresh_node_name(), e.x, e.y);
 			}
 			if(newtgt) {
 				if(!e.shiftKey) {
@@ -1131,11 +1145,12 @@ $(function() {
 			for(let ln of linknodes) {
 				if(action.targets.includes(ln)) {
 					ln.sep = {}
-					for(let n of ln.link.srcs) 
-						adjust_seps(ln, n, ln.link.srcs.length, ln.link.tgts.includes(n))
-
-					for(let n of ln.link.tgts) 
-						adjust_seps(ln, n, ln.link.tgts.length, ln.link.srcs.includes(n))
+					// ## TEMPORARILY COMMENTED OUT; KEEP SEPS SAME
+					// for(let n of ln.link.srcs) 
+					// 	adjust_seps(ln, n, ln.link.srcs.length, ln.link.tgts.includes(n))
+					// 
+					// for(let n of ln.link.tgts) 
+					// 	adjust_seps(ln, n, ln.link.tgts.length, ln.link.srcs.includes(n))
 				}
 			}
 			simulation.force("bipartite").links(mk_bipartite_links(links));
@@ -1179,7 +1194,7 @@ $(function() {
 		// }
 	});
 	window.addEventListener("keydown", function(event){
-		console.log(event);
+		// console.log(event);
 		
 		if(event.key == 'Escape'){
 			if ( temp_link ) {

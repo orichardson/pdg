@@ -11,7 +11,8 @@ function custom_collide_force() {
 	var nodes,
 		random,
 		strength = 1,
-		iterations = 1;
+		iterations = 1,
+		nodeFilter = () => true;
 
 	// if (typeof radius !== "function")
 	// 	radius = () => (radius == null ? 1 : +radius);
@@ -22,6 +23,7 @@ function custom_collide_force() {
 			node,
 			xi,yi, 
 			wi,hi;
+		// console.log(n);
 
 		for (var k = 0; k < iterations; ++k) {
 			tree = d3.quadtree(nodes, d => d.x + d.vx, d => d.y + d.vy).visitAfter(prepare);
@@ -44,9 +46,10 @@ function custom_collide_force() {
 			var data = quad.data;
 			let rx = (wi+quad.w)/2, ry = (hi+quad.h)/2;
 			// is pre-allocating faster?
-			var ex, ey, ex2, ey2, datx, daty, dx,dy, portion;
+			var ex, ey, ex2, ey2, datx, daty, dx, dy, portion;
+			// var factor;
 			
-			if (data) {
+			if (data && (!data.link || !node.link)) {
 				// why is this so impiortant?
 				if (data.index > node.index) {
 					// corner point
@@ -92,14 +95,18 @@ function custom_collide_force() {
 						dx = datx - xi - rx*sgn(datx - xi),
 						dy = daty - yi - ry*sgn(daty - yi);
 						
+						// if(! data.link && !node.link) {
 						if(dx * dx > dy*dy) dx = 0;
-						else dy = 0;						
-						
+						else dy = 0;				
+						// }		
+												
 						// let factor = Math.sqrt(dx*dx + dy*dy) / (Math.max(datx,daty)) * strength;
 						// let factorx = (rx - dx) / dx *strength,
 						// 	factory = (ry - dy) / dy * strength;
 						// let factorx = factory = 0.1;
 						// let factorx = factory = strength;
+						
+						// factor = strength
 						
 						dx *= strength;
 						dy *= strength;
@@ -148,9 +155,13 @@ function custom_collide_force() {
 	}
 
 	force.initialize = function(_nodes, _random) {
-		nodes = _nodes;
+		nodes = _nodes.filter(nodeFilter);
 		random = _random;
 	};
+	force.nodeFilter = function(_) {
+		// console.log("Nodes");
+		return arguments.length ? (nodeFilter = _, force) : nodeFilter;
+	} 
 
 	force.iterations = function(_) {
 		return arguments.length ? (iterations = +_, force) : iterations;
