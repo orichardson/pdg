@@ -2,26 +2,6 @@
 // import defaultExport from '/link-modified.js';
 
 console.log("pdgvz.js");
-// var hypergraph = { // BN1.json
-// 	nodes : ["PS", "S", "SH", "C", "T", "Test 1", "Test 2"], 
-// 	hedges : {0: [[], ["PS"]], 
-// 	 1: [["PS"], ["S"]],
-// 	 2: [["PS"], ["SH"]],
-// 	 3: [["S", "SH"], ["C"]], 
-// 	 P: [["T"], ["Test 1", "Test 2"]] } 
-// };
-// hypergraph = {
-// 	nodes : ['X0', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6'],
-//  	hedges: {
-// 		'p271': [['X2', 'X6', 'X4'], ['X0']],
-// 		'p272': [['X0', 'X5'], ['X1']],
-// 		'p273': [['X1'], ['X2']],
-// 		'p274': [['X2'], ['X3']],
-// 		'p275': [['X3', 'X5'], ['X4']],
-// 		'p276': [['X2', 'X3', 'X4'], ['X5']],
-// 		'p277': [['X2'], ['X6']]}
-// };
-
 hypergraph = {
 	nodes : ['A', 'B', 'C', 'D'],
 	hedges : {
@@ -31,8 +11,6 @@ hypergraph = {
 		p6: [['B', 'C'], ['D']]
 	}
 };
-
-
 
 
 const initw = 50, inith = 40;
@@ -59,8 +37,8 @@ $(function() {
 		canvas.width = window.innerWidth;
 		canvas.height = window.innerHeight;
 		if(typeof simulation != "undefined") {
-			simulation.force('center').x(canvas.width/2);
-			simulation.force('center').y(canvas.height/2);
+			// simulation.force('center').x(canvas.width/2);
+			// simulation.force('center').y(canvas.height/2);
 			simulation.alpha(1).restart();
 			ontick();
 		}
@@ -128,8 +106,10 @@ $(function() {
 			link: link,
 			x: avg[0] + 10*Math.random()-5,
 			y: avg[1] + 10*Math.random()-5,
-			offset: [0,0],
-			vx: 0, vy:0, w : 5, h : 5,  display: false};
+			offset: [0,0], vx: 0, vy:0,
+			// w : 5, h : 5,
+			w : 0, h : 0,
+			display: false};
 		return ob;
 	}
 	
@@ -145,7 +125,9 @@ $(function() {
 		lookup = [];
 		nodes = [];
 		linknodes = [];
-		align_node_dom();
+		links = []
+		svg.selectAll(".node").data([]).exit().remove();
+		// align_node_dom();
 		
 		// load nodes
 		nodes = hypergraph.nodes.map( function(varname) {
@@ -352,8 +334,25 @@ $(function() {
 			// scale(delta, Math.max(0, norm-35) / norm )
 
 			// lpath.quadraticCurveTo(avgtgtshortened[0], avgtgtshortened[1], endpt[0], endpt[1]);
-			lpath.lineTo(...endpt);
-			let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, arrwidth);
+			// lpath.lineTo(...endpt);
+			central_ctrl = [
+					.8*avgtgtshortened[0] + true_mid[0]*(0.2) + delta[0],
+					.8*avgtgtshortened[1] + true_mid[1]*(0.2) + delta[1],
+				];
+			proximal_ctrl =  [
+					0.2*mid[0] + endpt[0]*(0.8) + delta[0] * 0,
+					0.2*mid[1] + endpt[1]*(0.8) + delta[1] * 0 
+				];
+			lpath.bezierCurveTo(...central_ctrl, ...proximal_ctrl, ...endpt);
+					// lookup[s].x, lookup[s].y,
+					// endpt[0], endpt[1]);
+			
+			
+			
+			// ### DRAW ARROWS
+			// let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, arrwidth);
+			// let [ar0, ar1, armid0, armid1] = arrowpts(central_ctrl, endpt, arrwidth);
+			let [ar0, ar1, armid0, armid1] = arrowpts(meldv(central_ctrl,proximal_ctrl,0.8), endpt, arrwidth);
 			lpath.moveTo(...endpt);
 			lpath.quadraticCurveTo(armid0[0], armid0[1], ar0[0], ar0[1]);
 			lpath.moveTo(...endpt);
@@ -959,7 +958,10 @@ $(function() {
 			ontick();
 		}
 		if(mode == 'move') {
-			if (!event.active) simulation.alpha(1.2).alphaTarget(0).restart();
+			if (!event.active){
+				// simulation.alpha(1.2).alphaTarget(0).restart();	
+				simulation.alphaTarget(0);
+			} 
 			
 			if(event.subject.link)  { // if it's an edge
 				// console.log("FINISH DRAG", event);
@@ -1042,7 +1044,7 @@ $(function() {
 				obj.expanded = true;
 				obj.old_wh = [obj.w, obj.h];
 				// [obj.w, obj.h] = [550,250];
-				[obj.w, obj.h] = [550,250];
+				[obj.w, obj.h] = [200,150];
 				[obj.fx, obj.fy] = [obj.x, obj.y];
 				simulation.alpha(2).alphaTarget(0).restart();
 				
@@ -1249,7 +1251,6 @@ $(function() {
 				temp_link.x = lookup["<MOUSE>"].x
 				temp_link.y = lookup["<MOUSE>"].y
 			}
-			console.log(temp_link);
 			// set_mode('draw');
 			// links.push(temp_link);
 		}
@@ -1311,7 +1312,7 @@ $(function() {
 	});
 	window.addEventListener("mousemove", function(e) {
 		// mouse_pt = [e.x, e.y];
-		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:5,h:5};
+		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:0,h:0};
 		if(temp_link) redraw();
 		
 		if(popped_up_link && !picksL(e, popped_up_link, 10)) {

@@ -54,6 +54,9 @@ function addv(...vecs) {
 	}
 	return [0];
 }
+function meldv(v1, v2, alpha) {
+    return v1.map( (v1i, i) => v1i * (1-alpha) + v2[i] * alpha )
+}
 function scale(x, s) {
 	return x.map( x => x*s);
 }
