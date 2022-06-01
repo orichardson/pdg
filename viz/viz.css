@@ -45,8 +45,8 @@
 }
 
 .node.expanded > .nodeshape {
-	/* fill : rb(230, 150, 50, 1); */
-	fill: rgba(100,100,100, 0.8);
+	fill : rgba(20, 20, 20, 0.95);
+	/* fill: rgba(100,100,100, 0.8); */
 }
 .node.expanded text {
 	/* text-anchor:middle; */
@@ -92,7 +92,7 @@
 	stroke: rgba(230,230,230,0.5);
 }
 
-.node:not(.selected) > .nodeshape {
+.node:not(.selected):not(.expanded) > .nodeshape {
 	fill : rgba(200,200,200, 0.3);
 	stroke-width: 1px;
 	stroke: #888;

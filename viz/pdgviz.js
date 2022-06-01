@@ -38,7 +38,9 @@ hypergraph = {
 const initw = 50, inith = 40;
 // const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
 // const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
+const STRETCH_FACTOR = 1.2;
 const OPT_DIST = { 1:25,  2:40,  3:60, 4: 70, 5:80, 6:100 };
+
 function default_separation(nsibls, isLoop) {
 	return (nsibls in OPT_DIST ? OPT_DIST[nsibls] : 20*nsibls) + sgn(isLoop)*50;
 }
@@ -56,7 +58,9 @@ $(function() {
 			simulation.force('center').x(canvas.width/2);
 			simulation.force('center').y(canvas.height/2);
 			simulation.alpha(1).restart();
+			ontick();
 		}
+		// ontick();
 	}
 	window.addEventListener('resize', resizeCanvas, false);
 	resizeCanvas()
@@ -121,7 +125,7 @@ $(function() {
 			x: avg[0] + 10*Math.random()-5,
 			y: avg[1] + 10*Math.random()-5,
 			offset: [0,0],
-			vx: 0, vy:0, w : 50, h : 10,  display: false};
+			vx: 0, vy:0, w : 5, h : 5,  display: false};
 		return ob;
 	}
 	
@@ -430,21 +434,21 @@ $(function() {
 		
 		
 		//DEBUG: Draw ex and ey of nodes
-		context.globalAlpha = 0.7;
-		for (let n of nodes) {
-			if(n.ex && n.ey) {
-				context.fillStyle="#A4C";
-				context.beginPath();
-				context.arc(n.ex, n.ey, 10, 0, 2 * Math.PI);
-				context.fill();
-			}
-			if(n.ex2 && n.ey2) {
-				context.fillStyle="#CA4";
-				context.beginPath();
-				context.arc(n.ex2, n.ey2, 10, 0, 2 * Math.PI);
-				context.fill();
-			}
-		}
+		// context.globalAlpha = 0.7;
+		// for (let n of nodes) {
+		// 	if(n.ex && n.ey) {
+		// 		context.fillStyle="#A4C";
+		// 		context.beginPath();
+		// 		context.arc(n.ex, n.ey, 10, 0, 2 * Math.PI);
+		// 		context.fill();
+		// 	}
+		// 	if(n.ex2 && n.ey2) {
+		// 		context.fillStyle="#CA4";
+		// 		context.beginPath();
+		// 		context.arc(n.ex2, n.ey2, 10, 0, 2 * Math.PI);
+		// 		context.fill();
+		// 	}
+		// }
 		
 		/// Draw the invisible product nodes + make sure no node goes off screen.
 		context.globalAlpha = 0.5;
@@ -501,20 +505,21 @@ $(function() {
 		// }
 	}
 	function midpoint_aligning_force(alpha) {
-		let strength = 0.3 // 0.35
+		// let strength = 0.3 // 0.35
+		let strength = 0.2 // 0.35
 		for (let ln of linknodes) {
 			let l = ln.link;
 			if(l.srcs.length ==0) continue;
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
-			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha * alpha; 
+			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
 				//Math.sqrt(alpha);
-			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha * alpha;
+			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
 		}
 	}
 	
-	function mk_bipartite_links(links){
+		function mk_bipartite_links(links){
 		bipartite_links = []
 		// for( let l of links) {
 		// let lname = "ℓ" + l.label;
@@ -529,7 +534,7 @@ $(function() {
 					separation : 
 						ln.sep && ln.sep[s] ? ln.sep[s] : 
 						default_separation(l.srcs.length, l.tgts.includes(s)),
-					// nsibls: l.srcs.length + delta, 
+					// nsibls: l.srcs.length, 
 					// isloop: l.tgts.includes(s)
 				});
 			}
@@ -541,7 +546,7 @@ $(function() {
 					separation : 
 						ln.sep && ln.sep[t] ? ln.sep[t] : 
 						default_separation(l.tgts.length, l.srcs.includes(t)),
-					// nsibls: l.tgts.length + delta, 
+					// nsibls: l.tgts.length, 
 					// isloop: l.srcs.includes(t) 
 				});
 			}
@@ -581,14 +586,15 @@ $(function() {
 			// .strength(n => n.display ? -100 : 0)
 			// .strength(n => n.link || n.componebnts ? 0 : -120)
 			.strength(n => (n.link) ? -50 : 0)
-			.distanceMax(50) )
+			.distanceMax(30) )
 		.force("midpt_align", midpoint_aligning_force)
 		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 		// 	// .strength(l => 70/l.separation)
 		// 	.distance(l => l.separation).iterations(3))
 		.force("bipartite", custom_link_force(mk_bipartite_links(links)).id(l => l.id)
 			// .distance(l => [l.separation*1, l.separation*1]).iterations(3))
-			.distance(l => [l.separation*0.8, l.separation*1.2]).iterations(3))
+			.distance(l => [l.separation / STRETCH_FACTOR, 
+							l.separation * STRETCH_FACTOR]).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 		// 		.strength(0.5).iterations(5))
 		// .force("nointersect", d3.forceCollide().radius(
@@ -691,7 +697,7 @@ $(function() {
 		lndata.selectAll("text").text(ln => ln.link.label);		
 	}
 	function restyle_nodes() {
-		/*** Now for some SVG operations. ***/
+		/*** Now for somedd SVG operations. ***/
 		// let nodedata = 
 		svg.selectAll(".node").data(nodes, n => n.id)
 			// .attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")")
@@ -932,7 +938,7 @@ $(function() {
 			ontick();
 		}
 		if(mode == 'move') {
-			if (!event.active) simulation.alphaTarget(0);
+			if (!event.active) simulation.alpha(1.2).alphaTarget(0).restart();
 			
 			if(event.subject.link)  { // if it's an edge
 				// console.log("FINISH DRAG", event);
@@ -995,6 +1001,7 @@ $(function() {
 			// let newtgts = [pickobj.id] // do I maybe want to do this at end?
 			newsrcs.push(... temp_link.srcs.filter( n => !newsrcs.includes(n)));
 			new_link(newsrcs, newtgts, fresh_label(), [temp_link.x, temp_link.y]);
+			simulation.alpha(0.5).alphaTarget(0).restart();
 			
 			temp_link = null;
 			ontick();
@@ -1099,12 +1106,29 @@ $(function() {
 				delete n.old_pos;
 			});
 			
+			function adjust_seps(ln, n, nsibls, isloop) {
+				// ln.sep[n] = mag(subv(vec2(ln), vec2(lookup[n])));
+				let p = vec2(ln), 
+					q = vec2(lookup[n]),
+					wh = [lookup[n].w, lookup[n].h];
+				let cur_sep = mag(subv(sqshortened_end(q,p,[ln.w,ln.h]),
+									 sqshortened_end(p,q, wh) ));
+				let cur_sep_want = ln.sep && ln.sep[n]? ln.sep[n] :
+				 	default_separation(nsibls,isloop)
+				
+				if(cur_sep > cur_sep_want * STRETCH_FACTOR ||
+					 	cur_sep < cur_sep_want / STRETCH_FACTOR) 
+					ln.sep[n] = cur_sep;
+			}
+			
 			for(let ln of linknodes) {
 				if(action.targets.includes(ln)) {
 					ln.sep = {}
-					for(let n of ln.link.srcs.concat(ln.link.tgts)) {
-						ln.sep[n] = mag(subv(vec2(ln), vec2(lookup[n])));
-					}
+					for(let n of ln.link.srcs) 
+						adjust_seps(ln, n, ln.link.srcs.length, ln.link.tgts.includes(n))
+
+					for(let n of ln.link.tgts) 
+						adjust_seps(ln, n, ln.link.tgts.length, ln.link.srcs.includes(n))
 				}
 			}
 			simulation.force("bipartite").links(mk_bipartite_links(links));
