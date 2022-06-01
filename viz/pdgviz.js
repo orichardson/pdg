@@ -39,7 +39,9 @@ const initw = 50, inith = 40;
 // const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
 // const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
 const STRETCH_FACTOR = 1.2;
-const OPT_DIST = { 1:25,  2:40,  3:60, 4: 70, 5:80, 6:100 };
+// const STRETCH_FACTOR = 3;
+// const OPT_DIST = { 1:25,  2:35,  3:50, 4: 65, 5:80, 6:95 };
+const OPT_DIST = { 1:25,  2:35,  3:50, 4: 65, 5:80, 6:95 };
 
 function default_separation(nsibls, isLoop) {
 	return (nsibls in OPT_DIST ? OPT_DIST[nsibls] : 20*nsibls) + sgn(isLoop)*50;
@@ -132,14 +134,16 @@ $(function() {
 	load_hypergraph(hypergraph);
 	
 	function load_hypergraph(hypergraph) {
-		if(typeof simulation != "undefined") simulation.stop();
+		if(typeof simulation != "undefined") {
+			simulation.stop();
+		}
 		
 		// clear state
 		parentLinks = [];
 		lookup = [];
 		nodes = [];
 		linknodes = [];
-		// align_node_dom();
+		align_node_dom();
 		// load nodes
 		nodes = hypergraph.nodes.map( function(varname) {
 			let ob = {id: varname, values: [0,1],
@@ -237,7 +241,7 @@ $(function() {
 			// console.log(e);
 			let ob = JSON.parse(e.target.result);
 			load_hypergraph(ob);
-			console.log("HYPERGRAPH:", ob);
+			// console.log("LOADED HYPERGRAPH:", ob);
 		};
 		reader.readAsText(evt.target.files[0]);
 	})	
@@ -513,13 +517,15 @@ $(function() {
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
-			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
-				//Math.sqrt(alpha);
-			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
+			// ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
+			// ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
+		
+			ln.x += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
+			ln.y += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
 		}
 	}
 	
-		function mk_bipartite_links(links){
+	function mk_bipartite_links(links){
 		bipartite_links = []
 		// for( let l of links) {
 		// let lname = "ℓ" + l.label;
@@ -593,6 +599,7 @@ $(function() {
 		// 	.distance(l => l.separation).iterations(3))
 		.force("bipartite", custom_link_force(mk_bipartite_links(links)).id(l => l.id)
 			// .distance(l => [l.separation*1, l.separation*1]).iterations(3))
+			.strength(1)
 			.distance(l => [l.separation / STRETCH_FACTOR, 
 							l.separation * STRETCH_FACTOR]).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
@@ -1033,7 +1040,7 @@ $(function() {
 			}
 			else {
 				obj.expanded = false;
-				[obj.w, obj.h] = obj.old_wh;
+				[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
 				delete obj.fx
 				delete obj.fy;
 				simulation.alpha(2).alphaTarget(0).restart();
@@ -1172,7 +1179,8 @@ $(function() {
 		// }
 	});
 	window.addEventListener("keydown", function(event){
-		console.log(event);		
+		console.log(event);
+		
 		if(event.key == 'Escape'){
 			if ( temp_link ) {
 				if(temp_link.based_on ) 
@@ -1231,6 +1239,7 @@ $(function() {
 			// links.push(temp_link);
 		}
 		else if (event.key == ' ') {
+			event.preventDefault();
 			// simulation.alphaTarget(0.05).restart();
 			simulation.alpha(2).alphaTarget(0).restart();
 			

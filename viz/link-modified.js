@@ -30,18 +30,19 @@ function custom_link_force(blinks) {
     function force(alpha) {
         
         // console.log(distances);
+        var dx,dy,source,target,bl, a,b, bi, max_dist, min_dist, r;
+
         for (var k = 0; k < iterations; ++k) {
             for(var i = 0; i < blinks.length; i++) {
-                let bl = blinks[i];
-                let source = bl.source, target = bl.target;
-                var dx,dy;
+                bl = blinks[i];
+                source = bl.source, target = bl.target;
                 
                 if(rect_pad_mode) {
-                    let a = sqshortened_end(vvec2(source), vvec2(target), w_h(target)),
-                        b = sqshortened_end(vvec2(target), vvec2(source), w_h(source));
+                    // let
+                    a = sqshortened_end(vvec2(source), vvec2(target), w_h(target));
+                    b = sqshortened_end(vvec2(target), vvec2(source), w_h(source));
                         
                     [dx,dy] = subv(a,b);
-                    // console
                 } else {
                     // dx = target.x + target.vx - source.x - source.vx 
                     //     || jiggl();
@@ -49,10 +50,10 @@ function custom_link_force(blinks) {
                     //     || jiggl();
                     [dx, dy] = subv(vvec2(target), vvec2(source));
                 }
-                let r = Math.sqrt(dx * dx + dy * dy); 
+                r = Math.sqrt(dx * dx + dy * dy); 
                 
-                let min_dist = bl.min_dist || min_dists[i];
-                let max_dist = bl.max_dist || max_dists[i];
+                min_dist = bl.min_dist || min_dists[i];
+                max_dist = bl.max_dist || max_dists[i];
 
                 
                 // console.log(min_dist,max_dist, dx,dy,r);
@@ -62,12 +63,12 @@ function custom_link_force(blinks) {
                 dx *= r, dy *= r;
                 
                 // let b = 0.5; // TODO: make this count ratio as before.
-                let b = bias[i]
-                target.vx -= dx * b;
-                target.vy -= dy * b;
-                b = 1 - b;
-                source.vx += dx * b;
-                source.vy += dy * b;
+                bi = bias[i]
+                target.vx -= dx * bi;
+                target.vy -= dy * bi;
+                bi = 1 - bi;
+                source.vx += dx * bi;
+                source.vy += dy * bi;
             }
         
         }
@@ -93,7 +94,7 @@ function custom_link_force(blinks) {
         min_dists = new Array(m);
         initializeDistance();
         strengths = new Array(m);
-        for(var i = 0; i < m; ++i) strengths[i] = +strength(blinks[i],i,blinks)
+        initializeStrength();
     }
     force.initialize = function(_nodes, _random) {
         random = _random;
@@ -108,6 +109,12 @@ function custom_link_force(blinks) {
             [min_dists[i], max_dists[i]] = distance(blinks[i], i, blinks);
         }
     }
+    function initializeStrength() {
+        if(!bnodes) return;
+        for(var i = 0; i < blinks.length; ++i)
+            strengths[i] = +strength(blinks[i],i,blinks)
+    }
+    
     force.links = function(_) {
         return arguments.length ? (blinks = _, initialize(), force) : links;
     };
@@ -122,6 +129,11 @@ function custom_link_force(blinks) {
         return arguments.length ?
             (distance = typeof _ === "function" ? _ : () => [_,_] , initializeDistance(), force)
             : distance;
+    };
+    force.strength = function(_) {
+        return arguments.length ?
+            (strength = typeof _ === "function" ? _ : () => _ , initializeStrength(), force)
+            : strength;
     };
     force.rect_pad_mode = function( _ ) {
         return arguments.length ? (rect_pad_mode = _, force): rect_pad_mode;
