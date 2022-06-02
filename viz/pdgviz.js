@@ -1039,47 +1039,47 @@ $(function() {
 		let obj = pickN(e), link = pickL(e);
 		if(obj) { // rename selected node
 			// EXPANDING CODE
-			if(!obj.expanded) {
-				simulation.stop();
-				obj.expanded = true;
-				obj.old_wh = [obj.w, obj.h];
-				// [obj.w, obj.h] = [550,250];
-				[obj.w, obj.h] = [200,150];
-				[obj.fx, obj.fy] = [obj.x, obj.y];
-				simulation.alpha(2).alphaTarget(0).restart();
-				
-				for(let ln of linknodes) {
-					// if l.srcs or l.tgts includes n,
-					// then set strength to zero?
-					// set distance?
-				}
-			}
-			else {
-				obj.expanded = false;
-				[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
-				delete obj.fx
-				delete obj.fy;
-				simulation.alpha(2).alphaTarget(0).restart();
-			}
-			align_node_dom();
+			// if(!obj.expanded) {
+			// 	simulation.stop();
+			// 	obj.expanded = true;
+			// 	obj.old_wh = [obj.w, obj.h];
+			// 	// [obj.w, obj.h] = [550,250];
+			// 	[obj.w, obj.h] = [200,150];
+			// 	[obj.fx, obj.fy] = [obj.x, obj.y];
+			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// 
+			// 	for(let ln of linknodes) {
+			// 		// if l.srcs or l.tgts includes n,
+			// 		// then set strength to zero?
+			// 		// set distance?
+			// 	}
+			// }
+			// else {
+			// 	obj.expanded = false;
+			// 	[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
+			// 	delete obj.fx
+			// 	delete obj.fy;
+			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// }
+			// align_node_dom();
 			
 			
 			//RENAMING CODE
-			// let name = promptForName("Enter New Variable Name", obj.id, nodes.map(n=>n.id));
-			// if(!name) return;
-			// 
-			// let replacer = nid => (nid == obj.id) ? name : nid;
-			// //TODO this will leave parentLinks in the dust...
-			// for(let l of links) {
-			// 	l.srcs = l.srcs.map(replacer);
-			// 	l.tgts = l.tgts.map(replacer);
-			// 	l.source = l.srcs.join(",");
-			// 	l.target = l.tgts.join(",");
-			// }
-			// delete lookup[obj.id];
-			// obj.id = name;
-			// lookup[name] = obj;
-			// align_node_dom();
+			let name = promptForName("Enter New Variable Name", obj.id, nodes.map(n=>n.id));
+			if(!name) return;
+			
+			let replacer = nid => (nid == obj.id) ? name : nid;
+			//TODO this will leave parentLinks in the dust...
+			for(let l of links) {
+				l.srcs = l.srcs.map(replacer);
+				l.tgts = l.tgts.map(replacer);
+				l.source = l.srcs.join(",");
+				l.target = l.tgts.join(",");
+			}
+			delete lookup[obj.id];
+			obj.id = name;
+			lookup[name] = obj;
+			align_node_dom();
 		} else if(link) { // rename selected cpd
 			
 			
