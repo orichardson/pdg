@@ -175,6 +175,9 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
         u = np.random.rand()
         return (u < self.loc[xval].cumsum()).idxmax()
         
+    ####### CONVERSION TO PGMPY ########
+    def as_():
+        pass
         
 
 ## useless helper methods to either use dict values or list.
