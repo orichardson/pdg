@@ -50,6 +50,8 @@ except ImportError:
     print("No torch; only numpy backend")
 
 
+
+
 class CDist(ABC): pass
 class Dist(CDist): pass
 
@@ -176,8 +178,28 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
         return (u < self.loc[xval].cumsum()).idxmax()
         
     ####### CONVERSION TO PGMPY ########
-    def as_():
-        pass
+    def as_(self, targetclass):
+        """
+        Supported targetclasses:
+            pgmpy.factors.discrete.TabularCPD
+            pgmpy.factors.discrete.DiscreteFactor
+            numpy.array
+            
+        """
+        try:
+            from pgmpy.factors.discrete import TabularCPD
+            if targetclass == TabularCPD:
+                # or targetclass in ["pgmpy", "pgmpy.TabularCPD"]:
+                
+                return TabularCPD(self.nto.name, len(self.nto), 
+                    values = self.to_numpy().reshape(-1, len(self.nto)).T, 
+                    evidence = [v.name for v in self.nfrom.atoms], 
+                    evidence_card = [len(v) for v in self.nfrom.atoms],
+                    state_names = {v.name : v.ordered for v in [self.nto, *self.nfrom.atoms]}
+                    )
+        except ImportError as e:
+            e.args = "pgmpy not installed; cannot convert to pgmpy TabularCPD" + e.args;
+            raise e.with_traceback(e.__traceback__)
         
 
 ## useless helper methods to either use dict values or list.
