@@ -18,6 +18,11 @@ import seaborn as sns
 greens = sns.light_palette("green", as_cmap=True)
 
 
+try:
+	from pgmpy.factors.discrete import TabularCPD
+except ImportError:
+	warnings.warn("pgmpy not loaded")
+
 
 # recipe from https://docs.python.org/2.7/library/itertools.html#recipes
 def powerset(iterable):
@@ -48,6 +53,8 @@ try:
 			t1*(torch.log( where(t1==0., LOGZERO, t1) - torch.log(where(t2==0, LOGZERO, t2))))).sum()
 except ImportError:
 	print("No torch; only numpy backend")
+
+
 
 
 class CDist(ABC): pass
@@ -160,6 +167,24 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 		return cls.from_matrix(vfrom,vto,mat, **kwargs)
 		# return cls.from_matrix(, index=vfrom.ordered, columns=vto.ordered, nto=vto, nfrom= vfrom)
 
+
+	@classmethod
+	def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD):
+		tgt = rv.Variable(tcpd.state_names[tcpd.variable], name=tcpd.variable)
+
+
+		return cls.from_matrix()
+
+	def to_pgmpy(self):
+		return TabularCPD(self.nto.name, len(self.nto), 
+			values = self.to_numpy().reshape(-1, len(self.nto)).T, 
+			evidence = [v.name for v in self.nfrom.atoms], 
+			evidence_card = [len(v) for v in self.nfrom.atoms],
+			state_names = {v.name : v.ordered for v in [self.nto, *self.nfrom.atoms]}
+			)
+
+
+
 	def check_normalized(self):
 		amt = np.where(np.all(np.isfinite(self),axis=1), (np.sum(self, axis=1)-1)**2 ,0).sum()
 		if amt > 1E-5:
@@ -175,6 +200,16 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 		u = np.random.rand()
 		return (u < self.loc[xval].cumsum()).idxmax()
 		
+	####### CONVERSION TO PGMPY ########
+	def as_(self, targetclass):
+		"""
+		Supported targetclasses:
+			pgmpy.factors.discrete.TabularCPD
+			pgmpy.factors.discrete.DiscreteFactor
+			numpy.array
+			
+		"""
+		pass
 		
 
 ## useless helper methods to either use dict values or list.
