@@ -6,7 +6,7 @@ from typing import Type, TypeVar# , Union, Mapping
 import collections
 
 from functools import reduce
-from operator import and_
+from operator import and_, mul
 
 from . import utils
 from . import rv
@@ -169,11 +169,16 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 
 
 	@classmethod
-	def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD):
-		tgt = rv.Variable(tcpd.state_names[tcpd.variable], name=tcpd.variable)
+	def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD, **kwargs):
+		tgt = rv.Variable(tcpd.state_names[tcpd.variable], 
+			name=tcpd.variable)
+		if len(tcpd.get_evidence()) > 0 :
+			src = reduce(and_, [rv.Variable(tcpd.state_names[l], name=l) 
+				for l in tcpd.get_evidence() if l != tgt.name])
+		else: src = rv.Unit
 
-
-		return cls.from_matrix()
+		return cls.from_matrix(src, tgt, 
+			np.moveaxis(tcpd.values,0,-1).reshape(-1, len(tgt)), **kwargs)
 
 	def to_pgmpy(self):
 		return TabularCPD(self.nto.name, len(self.nto), 
