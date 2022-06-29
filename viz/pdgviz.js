@@ -1,25 +1,7 @@
+//A web-page opened via the file:// protocol cannot use import / export.
+// import defaultExport from '/link-modified.js';
+
 console.log("pdgvz.js");
-
-// var hypergraph = { // BN1.json
-// 	nodes : ["PS", "S", "SH", "C", "T", "Test 1", "Test 2"], 
-// 	hedges : {0: [[], ["PS"]], 
-// 	 1: [["PS"], ["S"]],
-// 	 2: [["PS"], ["SH"]],
-// 	 3: [["S", "SH"], ["C"]], 
-// 	 P: [["T"], ["Test 1", "Test 2"]] } 
-// };
-// hypergraph = {
-// 	nodes : ['X0', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6'],
-//  	hedges: {
-// 		'p271': [['X2', 'X6', 'X4'], ['X0']],
-// 		'p272': [['X0', 'X5'], ['X1']],
-// 		'p273': [['X1'], ['X2']],
-// 		'p274': [['X2'], ['X3']],
-// 		'p275': [['X3', 'X5'], ['X4']],
-// 		'p276': [['X2', 'X3', 'X4'], ['X5']],
-// 		'p277': [['X2'], ['X6']]}
-// };
-
 hypergraph = {
 	nodes : ['A', 'B', 'C', 'D'],
 	hedges : {
@@ -31,11 +13,16 @@ hypergraph = {
 };
 
 
-
-
 const initw = 50, inith = 40;
+// const STRETCH_FACTOR = 1
+const STRETCH_FACTOR = 1.2;
+// const STRETCH_FACTOR = 3;
+
 // const OPT_DIST = {0 : 35, 1:50, 2:70, 3:100, 4: 150, 5: 180, 6: 180};
-const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
+// const OPT_DIST = {1:50, 2:70, 3:100, 4: 110, 5: 120, 6: 130};
+// const OPT_DIST = { 1:25,  2:35,  3:50, 4: 65, 5:80, 6:95 };
+const OPT_DIST = { 1:25,  2:35,  3:50, 4: 65, 5:80, 6:95 };
+
 function default_separation(nsibls, isLoop) {
 	return (nsibls in OPT_DIST ? OPT_DIST[nsibls] : 20*nsibls) + sgn(isLoop)*50;
 }
@@ -50,10 +37,12 @@ $(function() {
 		canvas.width = window.innerWidth;
 		canvas.height = window.innerHeight;
 		if(typeof simulation != "undefined") {
-			simulation.force('center').x(canvas.width/2);
-			simulation.force('center').y(canvas.height/2);
+			// simulation.force('center').x(canvas.width/2);
+			// simulation.force('center').y(canvas.height/2);
 			simulation.alpha(1).restart();
+			ontick();
 		}
+		// ontick();
 	}
 	window.addEventListener('resize', resizeCanvas, false);
 	resizeCanvas()
@@ -117,19 +106,29 @@ $(function() {
 			link: link,
 			x: avg[0] + 10*Math.random()-5,
 			y: avg[1] + 10*Math.random()-5,
-			offset: [0,0],
-			vx: 0, vy:0, w : 10, h : 10,  display: false};
+			offset: [0,0], vx: 0, vy:0,
+			// w : 5, h : 5,
+			w : 0, h : 0,
+			display: false};
 		return ob;
 	}
 	
 	load_hypergraph(hypergraph);
 	
 	function load_hypergraph(hypergraph) {
-		if(typeof simulation != "undefined") simulation.stop();
+		if(typeof simulation != "undefined") {
+			simulation.stop();
+		}
 		
 		// clear state
 		parentLinks = [];
 		lookup = [];
+		nodes = [];
+		linknodes = [];
+		links = []
+		svg.selectAll(".node").data([]).exit().remove();
+		// align_node_dom();
+		
 		// load nodes
 		nodes = hypergraph.nodes.map( function(varname) {
 			let ob = {id: varname, values: [0,1],
@@ -137,7 +136,6 @@ $(function() {
 			lookup[varname] = ob;
 			return ob;
 		});
-		align_node_dom();		
 		
 		// load saved node properties
 		if(hypergraph.viz && hypergraph.viz.nodes) {
@@ -145,6 +143,8 @@ $(function() {
 				Object.assign(lookup[nid], propobj)
 			}
 		}
+		align_node_dom();		
+
 		
 		// load hyper-edges
 		let ED = hypergraph.hedges;
@@ -163,10 +163,20 @@ $(function() {
 				Object.assign(ln, ob);
 			});
 		} 
+		if(hypergraph.viz && hypergraph.viz.links) {
+			hypergraph.viz.links.forEach( function([label, ob]) {
+				let l = links.find(l => l.label == label);
+				Object.assign(l, ob);
+			});
+		} 
+		// 
 		
 		// if simulation exists, update nodes & edges of simulation + restart.
 		if(typeof simulation != "undefined") {
 			simulation.nodes(nodes.concat(linknodes));
+			restyle_nodes();
+			restyle_links();
+
 			simulation.force('bipartite').links(mk_bipartite_links(links));
 			
 			if( ! hypergraph.viz ){
@@ -189,12 +199,15 @@ $(function() {
 			hedges : hedges,
 			viz : {
 				nodes : Object.fromEntries(nodes.map(
-						n => [n.id, cloneAndPluck(n, ["x", "y", "w", "h"])]
+						n => [n.id, cloneAndPluck(n, ["x", "y", "w", "h", "selected", "expanded"])]
 						// n => [n.id, n]
 					)),
 				linknodes : linknodes.map(
 					// ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h"] )]
-					ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h"] )]
+					ln =>  [ln.link.label, cloneAndPluck(ln, ["x", "y", "w", "h", "sep" ] )]
+				),
+				links : links.map(
+					l =>  [l.label, cloneAndPluck(l, ["selected" ] )]
 				)
 			}
 		}
@@ -213,7 +226,7 @@ $(function() {
 			// console.log(e);
 			let ob = JSON.parse(e.target.result);
 			load_hypergraph(ob);
-			console.log("HYPERGRAPH:", ob);
+			// console.log("LOADED HYPERGRAPH:", ob);
 		};
 		reader.readAsText(evt.target.files[0]);
 	})	
@@ -296,15 +309,20 @@ $(function() {
 			// 		.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1] * 1.8,
 			// 		// lookup[s].x, lookup[s].y,
 			// 		mid[0], mid[1]);
+			
+			
 			lpath.bezierCurveTo(
 					// avgtgt[0], avgtgt[1],
-					0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0.5,
-					0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0.5,
+					// 0.2*midearly[0] + startpt[0]*(0.8) + delta[0] * 0,
+					// 0.2*midearly[1] + startpt[1]*(0.8) + delta[1] * 0,
+					 0.2*mid[0] + startpt[0]*(0.8) + delta[0] * 0,
+					 0.2*mid[1] + startpt[1]*(0.8) + delta[1] * 0,
 					.8*avgsrcshortened[0] + true_mid[0]*(0.2) + delta[0],
 					.8*avgsrcshortened[1] + true_mid[1]*(0.2) + delta[1],
 					// lookup[s].x, lookup[s].y,
 					mid[0], mid[1]);
 
+			// lpath.moveTo(...startpt);
 			// lpath.lineTo(mid[0], mid[1]);
 		});
 		tgt.forEach( function(t) {
@@ -316,8 +334,25 @@ $(function() {
 			// scale(delta, Math.max(0, norm-35) / norm )
 
 			// lpath.quadraticCurveTo(avgtgtshortened[0], avgtgtshortened[1], endpt[0], endpt[1]);
-			lpath.lineTo(...endpt);
-			let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, arrwidth);
+			// lpath.lineTo(...endpt);
+			central_ctrl = [
+					.8*avgtgtshortened[0] + true_mid[0]*(0.2) + delta[0],
+					.8*avgtgtshortened[1] + true_mid[1]*(0.2) + delta[1],
+				];
+			proximal_ctrl =  [
+					0.2*mid[0] + endpt[0]*(0.8) + delta[0] * 0,
+					0.2*mid[1] + endpt[1]*(0.8) + delta[1] * 0 
+				];
+			lpath.bezierCurveTo(...central_ctrl, ...proximal_ctrl, ...endpt);
+					// lookup[s].x, lookup[s].y,
+					// endpt[0], endpt[1]);
+			
+			
+			
+			// ### DRAW ARROWS
+			// let [ar0, ar1, armid0, armid1] = arrowpts(mid, endpt, arrwidth);
+			// let [ar0, ar1, armid0, armid1] = arrowpts(central_ctrl, endpt, arrwidth);
+			let [ar0, ar1, armid0, armid1] = arrowpts(meldv(central_ctrl,proximal_ctrl,0.8), endpt, arrwidth);
 			lpath.moveTo(...endpt);
 			lpath.quadraticCurveTo(armid0[0], armid0[1], ar0[0], ar0[1]);
 			lpath.moveTo(...endpt);
@@ -360,7 +395,7 @@ $(function() {
 			if(!l.display) continue;
 			let lw = l.lw | 2;
 			context.lineWidth = lw * 1.2 + 3;
-			context.strokeStyle = l.selected ? "rgba(230, 150, 50, 0.4)" : "white";
+			context.strokeStyle = l.selected ? "rgba(230, 150, 50, 0.4)" : "rgba(255, 255, 255, 0.7)";
 			context.stroke(l.path2d);
 			
 			context.lineWidth =  lw;
@@ -382,7 +417,7 @@ $(function() {
 			let tlpath = compute_link_shape(temp_link.srcs, temp_link.tgts, midpt);
 			
 			context.lineWidth = 3;
-			context.strokeStyle = "white";
+			context.strokeStyle = "rgba(255,255,255,0.4)";
 			context.stroke( tlpath )
 			
 			context.lineWidth = 1.5;
@@ -405,6 +440,24 @@ $(function() {
 			// context.restore();
 		}
 		
+		
+		//DEBUG: Draw ex and ey of nodes
+		// context.globalAlpha = 0.7;
+		// for (let n of nodes) {
+		// 	if(n.ex && n.ey) {
+		// 		context.fillStyle="#A4C";
+		// 		context.beginPath();
+		// 		context.arc(n.ex, n.ey, 10, 0, 2 * Math.PI);
+		// 		context.fill();
+		// 	}
+		// 	if(n.ex2 && n.ey2) {
+		// 		context.fillStyle="#CA4";
+		// 		context.beginPath();
+		// 		context.arc(n.ex2, n.ey2, 10, 0, 2 * Math.PI);
+		// 		context.fill();
+		// 	}
+		// }
+		
 		/// Draw the invisible product nodes + make sure no node goes off screen.
 		context.globalAlpha = 0.5;
 		context.lineWidth = 2;
@@ -421,18 +474,16 @@ $(function() {
 				context.stroke();				
 			}
 		});
+
+		context.fillStyle="#888";
 		
 		//draw the linknodes 
 		// linknodes.forEach(function(n) {
-		// 	context.beginPath();
-		// 
-		// 	if( n.selected )
-		// 		context.strokeStyle="#1AE";
-		// 	else context.strokeStyle="#A4C";
-		// 
 		// 	context.moveTo(n.x, n.y);
-		// 	context.arc(n.x, n.y, 8, 0, 2 * Math.PI);
-		// 	context.stroke();				
+		// 	context.beginPath();
+		// 	// context.fillStyle="#A4C";
+		// 	context.arc(n.x, n.y, 7, 0, 2 * Math.PI);
+		// 	context.fill();				
 		// });
 		// context.globalAlpha = 1;
 		context.restore();
@@ -462,16 +513,28 @@ $(function() {
 		// }
 	}
 	function midpoint_aligning_force(alpha) {
+		// let strength = 0.3 // 0.35
+		let strength = 0.2 // 0.35
 		for (let ln of linknodes) {
 			let l = ln.link;
 			if(l.srcs.length ==0) continue;
 			[l.path2d, ln.true_mid] = compute_link_shape(l.srcs, l.tgts, vec2(ln), true);
 			// ln.x += (mid[0] - ln.x) * 0.25;
 			// ln.y += (mid[1] - ln.y) * 0.25;
-			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x) * 0.35 *alpha;
-			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y) * 0.35 *alpha;
+			// ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x - ln.vx) * strength * alpha; 
+			// ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y - ln.vy) * strength * alpha;
+			
+			// ln.x += (ln.true_mid[0] + ln.offset[0] - ln.x - ln.vx) * strength * alpha; 
+			// ln.y += (ln.true_mid[1] + ln.offset[1] - ln.y - ln.vy) * strength * alpha;
+			
+			ln.vx += (ln.true_mid[0] + ln.offset[0] - ln.x - ln.vx) * strength * alpha; 
+			ln.vy += (ln.true_mid[1] + ln.offset[1] - ln.y - ln.vy) * strength * alpha;
+		
+			// ln.x += (ln.true_mid[0] + ln.offset[0] - ln.x) * strength * alpha; 
+			// ln.y += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
 		}
 	}
+	
 	function mk_bipartite_links(links){
 		bipartite_links = []
 		// for( let l of links) {
@@ -487,7 +550,7 @@ $(function() {
 					separation : 
 						ln.sep && ln.sep[s] ? ln.sep[s] : 
 						default_separation(l.srcs.length, l.tgts.includes(s)),
-					// nsibls: l.srcs.length + delta, 
+					// nsibls: l.srcs.length, 
 					// isloop: l.tgts.includes(s)
 				});
 			}
@@ -499,7 +562,7 @@ $(function() {
 					separation : 
 						ln.sep && ln.sep[t] ? ln.sep[t] : 
 						default_separation(l.tgts.length, l.srcs.includes(t)),
-					// nsibls: l.tgts.length + delta, 
+					// nsibls: l.tgts.length, 
 					// isloop: l.srcs.includes(t) 
 				});
 			}
@@ -521,31 +584,44 @@ $(function() {
 		ontick(); 
 		simulation.alpha(2).restart();
 	} 
-
 	
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
 		//// .force("charge", d3.forceManyBody().strength( -100))
 		// .force("link", d3.forceLink(links).id(l => l.id)
 		// 	.strength(1).distance(110).iterations(3))
 		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
-		// 		.strength(0.3).distance(40).iterations(2))
+		// 		.strength(0.3).distance(40).iterations(2))d
 		// .force("avgpos_align", multi_avgpos_alignment_force)
-		.force("charge", d3.forceManyBody()
+		.force("charge", filtered_force(d3.forceManyBody()
 			// .strength(n => n.display ? -100 : 0)
 			// .strength(n => n.link || n.components ? 0 : -120)
-			.strength(n => (n.link || !n.display) ? 0 : -100)
-			.distanceMax(150)
-		)
+			// .strength(n => (n.link || !n.display) ? 0 : -100)
+			.strength(-100)
+			.distanceMax(150), n => (!n.link && n.display) ))
+		.force("linkcharge", filtered_force(d3.forceManyBody()
+			// .strength(n => n.display ? -100 : 0)
+			// .strength(n => n.link || n.componebnts ? 0 : -120)
+			.strength(-100)
+			.distanceMax(40),  n => !!n.link))
 		.force("midpt_align", midpoint_aligning_force)
-		.force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
-			.strength(1).distance(l => l.separation).iterations(3))
+		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
+		// 	// .strength(l => 70/l.separation)
+		// 	.distance(l => l.separation).iterations(3))
+		.force("bipartite", custom_link_force(mk_bipartite_links(links)).id(l => l.id)
+			// .distance(l => [l.separation*1, l.separation*1]).iterations(3))
+			// .strength(1) 
+			.distance(l => [l.separation / STRETCH_FACTOR, 
+							l.separation * STRETCH_FACTOR]).iterations(3))
 		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
 		// 		.strength(0.5).iterations(5))
-		.force("nointersect", d3.forceCollide().radius(
-					n => n.display ? n.w/2 : (n.link ? 10 : 0))
-				.strength(0.5).iterations(5))
-		.force("center",
-			d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.1))
+		// .force("nointersect_old", d3.forceCollide().radius(
+		// 			n => n.display ? n.w/2 : (n.link ? 5 : 0))
+		// 		.strength(1).iterations(1))
+		.force("nointersect", custom_collide_force()
+			// .nodeFilter(n => !n.link)
+			// .strength(0.7)
+			.iterations(3))
+		// .force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.01))
 		.on("tick", ontick)
 		.stop();
 	simulation.alphaDecay(0.05);
@@ -605,13 +681,13 @@ $(function() {
 			.classed("node", true);
 			// .call(simulation.drag);
 		newnodeGs.append("rect").classed("nodeshape", true);
-		newnodeGs.append("text");
-		
+		newnodeGs.append("text");		
 		
 		nodedata.exit().each(remove_node)
 			.remove();
 		
 		nodedata = nodedata.merge(newnodeGs);
+		nodedata.classed('expanded', n => n.expanded)
 		nodedata.selectAll("rect.nodeshape")
 			.attr('width', n => n.w).attr('x', n => -n.w/2)
 			.attr('height', n => n.h).attr('y', n => -n.h/2)
@@ -641,7 +717,7 @@ $(function() {
 		lndata.selectAll("text").text(ln => ln.link.label);		
 	}
 	function restyle_nodes() {
-		/*** Now for some SVG operations. ***/
+		/*** Now for somedd SVG operations. ***/
 		// let nodedata = 
 		svg.selectAll(".node").data(nodes, n => n.id)
 			// .attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")")
@@ -782,6 +858,8 @@ $(function() {
 			console.log("DRAGSTART", action)
 		}
 		else if(mode == 'move') {
+			// if there are no other drag handlers currently firing.
+			// apparently useful mostly in multi-touch scenarios.
 			if (!event.active) simulation.alphaTarget(0.5).restart();
 			if(event.subject.link)  {// it's a link
 				event.subject.initial_offset = event.subject.offset;
@@ -806,6 +884,7 @@ $(function() {
 		}
 	}
 	function dragged(event) {
+		// console.log(event);
 		if (action.type == 'box-select') {
 			action.end = vec2(event);
 			ontick();
@@ -824,9 +903,9 @@ $(function() {
 			// mouse_pt = vec2(event);
 			lookup["<MOUSE>"] = {x: event.sourceEvent.x,
 							y: event.sourceEvent.y,
-							// w:1,h:1
+							w:1,h:1
 							// setting to negative 9 means the arrow is only shortened 1 pixel.
-							w: -9, h: -9
+							// w: -9, h: -9
 						};
 			// ontick();
 			redraw();
@@ -879,7 +958,10 @@ $(function() {
 			ontick();
 		}
 		if(mode == 'move') {
-			if (!event.active) simulation.alphaTarget(0);
+			if (!event.active){
+				// simulation.alpha(1.2).alphaTarget(0).restart();	
+				simulation.alphaTarget(0);
+			} 
 			
 			if(event.subject.link)  { // if it's an edge
 				// console.log("FINISH DRAG", event);
@@ -887,25 +969,28 @@ $(function() {
 				// 		event.subject.initial_offset[0] + event.,
 				// 		event.subject.initial_offset[1] + event.dy ]
 			} else {// it's a node	
-				event.subject.fx = null;
-				event.subject.fy = null;
+				if(!event.subject.expanded) {
+					event.subject.fx = null;
+					event.subject.fy = null;
+				}
 			}
 		}
 		else if (mode == 'draw' && temp_link) {
 			let newtgts = [], newsrcs = [];
 			
-			let pickobj = pickN(event);
+			let pickobj = pickN(event.sourceEvent);
 			if( pickobj ) {
 				// disable self-edges (for now) --- they're very annoying and easy to make by accident
 				if((temp_link.srcs.length == 1) && (temp_link.srcs[0] == pickobj.id)) {
 					temp_link = null;
+					console.log("aborting; no self loop");
 					redraw();
 					return;
 				}
 				
 				newtgts.push(pickobj.id);
 			} else { // no pick object. 
-				pickl = pickL(event, 25);
+				pickl = pickL(event.sourceEvent, 25);
 				if(pickl) {
 					if(pickl == temp_link.based_on){
 						temp_link.based_on.display = true;
@@ -924,7 +1009,7 @@ $(function() {
 					
 					// don't bother making a link if it was just a click;
 					// just make the new node.
-					console.log(event, temp_link, action);
+					// console.log(event, temp_link, action);
 					if(temp_link.srcs.length == 0 && mag(subv(vec2(event), vec2(temp_link))) <= 20) {
 						temp_link = null; ontick();	return;
 					}
@@ -939,6 +1024,7 @@ $(function() {
 			// let newtgts = [pickobj.id] // do I maybe want to do this at end?
 			newsrcs.push(... temp_link.srcs.filter( n => !newsrcs.includes(n)));
 			new_link(newsrcs, newtgts, fresh_label(), [temp_link.x, temp_link.y]);
+			simulation.alpha(0.5).alphaTarget(0).restart();
 			
 			temp_link = null;
 			ontick();
@@ -952,6 +1038,33 @@ $(function() {
 	canvas.addEventListener("dblclick", function(e) {
 		let obj = pickN(e), link = pickL(e);
 		if(obj) { // rename selected node
+			// EXPANDING CODE
+			// if(!obj.expanded) {
+			// 	simulation.stop();
+			// 	obj.expanded = true;
+			// 	obj.old_wh = [obj.w, obj.h];
+			// 	// [obj.w, obj.h] = [550,250];
+			// 	[obj.w, obj.h] = [200,150];
+			// 	[obj.fx, obj.fy] = [obj.x, obj.y];
+			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// 
+			// 	for(let ln of linknodes) {
+			// 		// if l.srcs or l.tgts includes n,
+			// 		// then set strength to zero?
+			// 		// set distance?
+			// 	}
+			// }
+			// else {
+			// 	obj.expanded = false;
+			// 	[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
+			// 	delete obj.fx
+			// 	delete obj.fy;
+			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// }
+			// align_node_dom();
+			
+			
+			//RENAMING CODE
 			let name = promptForName("Enter New Variable Name", obj.id, nodes.map(n=>n.id));
 			if(!name) return;
 			
@@ -995,7 +1108,7 @@ $(function() {
 		if( temp_link ) {
 			let newtgt = pickN(e);
 			if(!newtgt && mode == 'draw') {
-				newtgt = new_node(fresh_node_name(), event.x, event.y);
+				newtgt = new_node(fresh_node_name(), e.x, e.y);
 			}
 			if(newtgt) {
 				if(!e.shiftKey) {
@@ -1016,12 +1129,30 @@ $(function() {
 				delete n.old_pos;
 			});
 			
+			function adjust_seps(ln, n, nsibls, isloop) {
+				// ln.sep[n] = mag(subv(vec2(ln), vec2(lookup[n])));
+				let p = vec2(ln), 
+					q = vec2(lookup[n]),
+					wh = [lookup[n].w, lookup[n].h];
+				let cur_sep = mag(subv(sqshortened_end(q,p,[ln.w,ln.h]),
+									 sqshortened_end(p,q, wh) ));
+				let cur_sep_want = ln.sep && ln.sep[n]? ln.sep[n] :
+				 	default_separation(nsibls,isloop)
+				
+				if(cur_sep > cur_sep_want * STRETCH_FACTOR ||
+					 	cur_sep < cur_sep_want / STRETCH_FACTOR) 
+					ln.sep[n] = cur_sep;
+			}
+			
 			for(let ln of linknodes) {
 				if(action.targets.includes(ln)) {
 					ln.sep = {}
-					for(let n of ln.link.srcs.concat(ln.link.tgts)) {
-						ln.sep[n] = mag(subv(vec2(ln), vec2(lookup[n])));
-					}
+					// ## TEMPORARILY COMMENTED OUT; KEEP SEPS SAME
+					// for(let n of ln.link.srcs) 
+					// 	adjust_seps(ln, n, ln.link.srcs.length, ln.link.tgts.includes(n))
+					// 
+					// for(let n of ln.link.tgts) 
+					// 	adjust_seps(ln, n, ln.link.tgts.length, ln.link.srcs.includes(n))
 				}
 			}
 			simulation.force("bipartite").links(mk_bipartite_links(links));
@@ -1065,7 +1196,8 @@ $(function() {
 		// }
 	});
 	window.addEventListener("keydown", function(event){
-		// console.log(event);		
+		// console.log(event);
+		
 		if(event.key == 'Escape'){
 			if ( temp_link ) {
 				if(temp_link.based_on ) 
@@ -1108,7 +1240,7 @@ $(function() {
 				start : null
 			}
 		}
-		else if (event.key == 't') {
+		else if (event.key.toLowerCase() == 't') {
 			// start creating arrows.
 			// 1. Create new arrow from selection at tail
 			src = nodes.filter( n => n.selected ).map( n => n.id );
@@ -1119,11 +1251,11 @@ $(function() {
 				temp_link.x = lookup["<MOUSE>"].x
 				temp_link.y = lookup["<MOUSE>"].y
 			}
-			console.log(temp_link);
 			// set_mode('draw');
 			// links.push(temp_link);
 		}
 		else if (event.key == ' ') {
+			event.preventDefault();
 			// simulation.alphaTarget(0.05).restart();
 			simulation.alpha(2).alphaTarget(0).restart();
 			
@@ -1133,7 +1265,7 @@ $(function() {
 				// TODO shift selection to backup selection (red color)
 			}
 		}
-		else if (event.key == 'x') {
+		else if (event.key.toLowerCase() == 'x') {
 			simulation.stop();
 			nodes = nodes.filter(n => !n.selected);
 			// for(let i = 0; i < )
@@ -1180,7 +1312,7 @@ $(function() {
 	});
 	window.addEventListener("mousemove", function(e) {
 		// mouse_pt = [e.x, e.y];
-		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:5,h:5};
+		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:0,h:0};
 		if(temp_link) redraw();
 		
 		if(popped_up_link && !picksL(e, popped_up_link, 10)) {

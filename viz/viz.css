@@ -37,12 +37,32 @@
 	z-index:2;
 }
 
-.node text {
+.node:not(.expanded) text {
 	text-anchor:middle;
 	dominant-baseline : middle;
 	font-family: serif;
 	fill : black;
 }
+
+.node.expanded > .nodeshape {
+	fill : rgba(20, 20, 20, 0.95);
+	/* fill: rgba(100,100,100, 0.8); */
+}
+.node.expanded text {
+	/* text-anchor:middle; */
+	/* dominant-baseline : middle; */
+	font-family: serif;
+	stroke: white;
+}
+.node.expanded.selected text {
+	/* text-anchor:middle; */
+	/* dominant-baseline : middle; */
+	font-family: serif;
+	fill: orange;
+	stroke: red;
+	font-weight:bold;
+}
+
 
 .linknode text {
 	text-anchor:middle;
@@ -65,24 +85,25 @@
 	display: none;
 }
 
-.linknode.selected text.bg {
+.linknode.selected > text.bg {
 	stroke: rgba(230,150,50,0.5);
 }
-.linknode:not(.selected) text.bg {
+.linknode:not(.selected) > text.bg {
 	stroke: rgba(230,230,230,0.5);
 }
 
-.node:not(.selected) .nodeshape {
+.node:not(.selected):not(.expanded) > .nodeshape {
 	fill : rgba(200,200,200, 0.3);
 	stroke-width: 1px;
 	stroke: #888;
 }
 
-.node.selected .nodeshape {
+.node.selected > .nodeshape {
 	fill : rgba(230, 150, 50, 0.4);
 	stroke-width: 2px;
 	stroke: #863;
 }
+
 
 .ghost {
 	pointer-events: none;

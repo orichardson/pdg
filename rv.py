@@ -22,6 +22,10 @@ class Variable(set, metaclass=utils.CopiedType):
         self.structure = []
         self |= set(vals)
 
+    @property
+    def is1(self):
+        return self == Unit
+
     @staticmethod
     def product( *varis):
         if len(varis) == 1:
