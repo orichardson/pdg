@@ -89,6 +89,10 @@ class PDG:
 		HE = { l : [F,T] for  l,F,T in  l_atomnames if not set(T).issubset(F) }
 
 		return N, HE
+
+	@property
+	def Ed(self):
+		return [*self.edges('l')]
 	
 	def __call__(self, *INPUT, **kwargs):
 		"""
