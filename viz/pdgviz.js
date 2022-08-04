@@ -177,7 +177,7 @@ $(function() {
 			restyle_nodes();
 			restyle_links();
 
-			simulation.force('bipartite').links(mk_bipartite_links(links));
+			simulation.force('bipartite').links(mk_bipartite_links(linknodes));
 			
 			if( ! hypergraph.viz ){
 				reinitialize_node_positions();
@@ -535,7 +535,7 @@ $(function() {
 		}
 	}
 	
-	function mk_bipartite_links(links){
+	function mk_bipartite_links(linknodes){
 		bipartite_links = []
 		// for( let l of links) {
 		// let lname = "ℓ" + l.label;
@@ -607,7 +607,7 @@ $(function() {
 		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
 		// 	// .strength(l => 70/l.separation)
 		// 	.distance(l => l.separation).iterations(3))
-		.force("bipartite", custom_link_force(mk_bipartite_links(links)).id(l => l.id)
+		.force("bipartite", custom_link_force(mk_bipartite_links(linknodes)).id(l => l.id)
 			// .distance(l => [l.separation*1, l.separation*1]).iterations(3))
 			// .strength(1) 
 			.distance(l => [l.separation / STRETCH_FACTOR, 
@@ -658,7 +658,7 @@ $(function() {
 
 		linknodes.push(ln);
 		simulation.nodes(nodes.concat(linknodes));
-		simulation.force("bipartite").links(mk_bipartite_links(links));
+		simulation.force("bipartite").links(mk_bipartite_links(linknodes));
 
 		simulation.alpha(0.7).restart();
 		
@@ -697,7 +697,7 @@ $(function() {
 		
 		if (typeof simulation != 'undefined') {
 			simulation.nodes(nodes.concat(linknodes));
-			simulation.force("bipartite").links(mk_bipartite_links(links));
+			simulation.force("bipartite").links(mk_bipartite_links(linknodes));
 			
 			simulation.restart();
 		}
@@ -739,7 +739,7 @@ $(function() {
 				i--;
 			}
 		}
-		// simulation.force("bipartite").links(mk_bipartite_links(links));
+		// simulation.force("bipartite").links(mk_bipartite_links(linknodes));
 		
 		let multis_to_remove = [];
 		// for(let i = 0; i < parentLinks.length; i++) {
@@ -1155,7 +1155,7 @@ $(function() {
 					// 	adjust_seps(ln, n, ln.link.tgts.length, ln.link.srcs.includes(n))
 				}
 			}
-			simulation.force("bipartite").links(mk_bipartite_links(links));
+			simulation.force("bipartite").links(mk_bipartite_links(linknodes));
 
 			// for(let n of action.targets) {
 			// 
