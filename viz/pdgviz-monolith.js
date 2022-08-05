@@ -1,3 +1,18 @@
+//A web-page opened via the file:// protocol cannot use import / export.
+// import defaultExport from '/link-modified.js';
+
+console.log("pdgvz.js");
+hypergraph = {
+	nodes : ['A', 'B', 'C', 'D'],
+	hedges : {
+		p0: [['B', 'C'], ['A']],
+		$p_2$: [['A', 'D'], ['B']],
+		p4: [['A', 'D'], ['C']],
+		p6: [['B', 'C'], ['D']]
+	}
+};
+
+
 const initw = 50, inith = 40;
 // const STRETCH_FACTOR = 1
 const STRETCH_FACTOR = 1.2;
@@ -12,56 +27,95 @@ function default_separation(nsibls, isLoop) {
 	return (nsibls in OPT_DIST ? OPT_DIST[nsibls] : 20*nsibls) + sgn(isLoop)*50;
 }
 
-
-function linkobject([label, [src,tgt]], i) {
-	// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
-	return {
-		// source + target useful for using as actual force links
-		source: src.join(","), 
-		target: tgt.join(","), 
-		index: i, 
-		label: label,
-		srcs : src,
-		tgts : tgt,
-		display: true,
-		//## Added Later:
-		// path2d, lw, arclen
-		//## Actual Data
-		cpd : null,
-	}
-}
-
-function PDGView(hypergraph) {
-		//data from pdgviz.js
-	let nodes = [];
-	let links = [];
-	let linknodes = [];
-	let lookup = [];
-	// let lookup = {
-	// 	// get ["<MOUSE>"]() {
-	// 	// 	return { x : 0, y : 0, w : 0, h : 0};
-	// 	// }
-	// 	"<MOUSE>" : { x : 0, y : 0, w : 0, h : 0}
-	// };
-	let parentLinks = [];
-	let repaint = () => undefined
-	
-	
-	let canvas = document.getElementById("canvas")
+$(function() {
+	// resize to full screen
+	let canvas = document.getElementById("canvas"),
+		svg = d3.select("#svg");
 	let context = canvas.getContext("2d");
+
+	function resizeCanvas() {
+		canvas.width = window.innerWidth;
+		canvas.height = window.innerHeight;
+		if(typeof simulation != "undefined") {
+			// simulation.force('center').x(canvas.width/2);
+			// simulation.force('center').y(canvas.height/2);
+			simulation.alpha(1).restart();
+			ontick();
+		}
+		// ontick();
+	}
+	window.addEventListener('resize', resizeCanvas, false);
+	resizeCanvas()
 	
-	// let 
+	let mode = $('#drag-mode-toolbar button.active').attr('data-mode');
+	
+	$('#drag-mode-toolbar button').on('click', function() {
+		$('#drag-mode-toolbar button').removeClass("active");
+		$(this).addClass('active');
+		mode = $(this).attr('data-mode');
+		// console.log('new mode: ', mode);
+	});
+
+	// TODO LATER: make these lets.
+	nodes = [];
+	links = [];
+	lookup = [];
+	linknodes = [];
+	let parentLinks = [];
+	
+	function ensure_multinode(multi) {
+		s = multi.join(',')
+		if( ! nodes.find(n => n.id == s )) {
+			let ob = {id:s, 
+				// w:6, h:6, display: false,
+				w:2, h:2, display: false,
+				components: multi,
+			 	vx:0.0, vy:0.0};
+			
+			if( multi.length > 0 ) 
+				[ob.x, ob.y] = avgpos(...multi); // defined below.
 		
-	simulation = undefined
-	// 
-	svgg = d3.select("#svg").append("g")
-		.classed("PDG", true)
-	
-	if(hypergraph !== undefined) {
-		load(hypergraph)
+			// nodes.push(ob);
+			lookup[s] = ob;
+			multi.forEach(n =>
+				parentLinks.push({"source" : s, "target" : n}) );
+		};
+	}
+	function linkobject([label, [src,tgt]], i) {
+		// return { "source" : src.join(","), "target" : tgt.join(","), "index": i};
+		return {
+			// source + target useful for using as actual force links
+			source: src.join(","), 
+			target: tgt.join(","), 
+			index: i, 
+			label: label,
+			srcs : src,
+			tgts : tgt,
+			display: true,
+			//## Added Later:
+			// path2d, lw, arclen
+			//## Actual Data
+			cpd : null,
+		}
+	}
+	function mk_linknode(link) {
+		let avg = avgpos(...link.srcs, ...link.tgts)
+		let ob = {
+			// id: link.label+link.source+link.target
+			id: "ℓ"+link.label, 
+			link: link,
+			x: avg[0] + 10*Math.random()-5,
+			y: avg[1] + 10*Math.random()-5,
+			offset: [0,0], vx: 0, vy:0,
+			// w : 5, h : 5,
+			w : 0, h : 0,
+			display: false};
+		return ob;
 	}
 	
-	function load(hypergraph) {
+	load_hypergraph(hypergraph);
+	
+	function load_hypergraph(hypergraph) {
 		if(typeof simulation != "undefined") {
 			simulation.stop();
 		}
@@ -72,7 +126,7 @@ function PDGView(hypergraph) {
 		nodes = [];
 		linknodes = [];
 		links = []
-		svgg.selectAll(".node").data([]).exit().remove();
+		svg.selectAll(".node").data([]).exit().remove();
 		// align_node_dom();
 		
 		// load nodes
@@ -123,7 +177,7 @@ function PDGView(hypergraph) {
 			restyle_nodes();
 			restyle_links();
 
-			simulation.force('bipartite').links(mk_bipartite_links(links));
+			simulation.force('bipartite').links(mk_bipartite_links(linknodes));
 			
 			if( ! hypergraph.viz ){
 				reinitialize_node_positions();
@@ -135,7 +189,6 @@ function PDGView(hypergraph) {
 			
 		}
 	}
-	
 	function current_hypergraph() {
 		let hedges = {}
 		for(let l of links) {
@@ -159,46 +212,40 @@ function PDGView(hypergraph) {
 			}
 		}
 	}
-
-	function ensure_multinode(multi) {
-		s = multi.join(',')
-		if( ! nodes.find(n => n.id == s )) {
-			let ob = {id:s, 
-				// w:6, h:6, display: false,
-				w:2, h:2, display: false,
-				components: multi,
-				vx:0.0, vy:0.0};
-			
-			if( multi.length > 0 ) 
-				[ob.x, ob.y] = avgpos(...multi); // defined below.
-		
-			// nodes.push(ob);
-			lookup[s] = ob;
-			multi.forEach(n =>
-				parentLinks.push({"source" : s, "target" : n}) );
-		};
-	}
-	function avgpos( ... nodenames ) {
-		return   [ d3.mean(nodenames.map(v => lookup[v].x)),
-					 d3.mean(nodenames.map(v => lookup[v].y)) ];
-	}
-	function mk_linknode(link) {
-		let avg = avgpos(...link.srcs, ...link.tgts)
-		let ob = {
-			// id: link.label+link.source+link.target
-			id: "ℓ"+link.label, 
-			link: link,
-			x: avg[0] + 10*Math.random()-5,
-			y: avg[1] + 10*Math.random()-5,
-			offset: [0,0], vx: 0, vy:0,
-			// w : 5, h : 5,
-			w : 0, h : 0,
-			display: false};
-		return ob;
-	}
 	
-	function compute_link_shape(src, tgt, midpt=undefined,
-			return_mid=false, arrwidth=undefined) {
+	$('#save-button').click(function(e){
+		download_JSON(current_hypergraph(), 'hypergraph');
+	});
+	$('#load-button').click(function(e){
+		$('#fileupload').click();
+	})
+	$('#fileupload').on('change', function(evt){
+		// console.log(evt);
+		const reader = new FileReader();
+		reader.onload = function(e) {
+			// console.log(e);
+			let ob = JSON.parse(e.target.result);
+			load_hypergraph(ob);
+			// console.log("LOADED HYPERGRAPH:", ob);
+		};
+		reader.readAsText(evt.target.files[0]);
+	})	
+	
+	// temporary states, for actions
+	var temp_link = null;	
+	var popup_process = null;
+	var popped_up_link = null;
+	var action = {};
+ 
+	//##  Next, Updating + Preparing shapes for drawing, starting with a 
+	// helpful way of getting average position by node labels.  
+	function avgpos( ... nodenames ) {
+		// if ( nodenames[0] == "<MOUSE>")
+		// 	return mouse_pt;
+		return   [ d3.mean(nodenames.map(v => lookup[v].x)),
+				   d3.mean(nodenames.map(v => lookup[v].y)) ];
+	}
+	function compute_link_shape(src, tgt, midpt=undefined, return_mid=false, arrwidth=undefined) {
 		if(arrwidth == undefined) arrwidth=10;
 		// let srcnode = lookup[src.join(",")];
 		// let avgsrc = vec2(srcnode);
@@ -314,7 +361,6 @@ function PDGView(hypergraph) {
 		if(return_mid) return [lpath, true_mid];
 		return lpath;
 	}
-
 	function ontick() {
 		// for (let l of links) {
 		// 	l.path2d = compute_link_shape(l.srcs,l.tgts);
@@ -332,12 +378,18 @@ function PDGView(hypergraph) {
 		
 		restyle_nodes();
 		restyle_links();
-		repaint();
+		redraw();
 	}
-	function draw(context) {
+	function redraw() {
 		context.save();
+		context.clearRect(0, 0, canvas.width, canvas.height);
 		
-		context.globalAlpha = 1;
+		context.lineWidth = 1.5;
+		context.strokeStyle = "black";
+
+		context.lineCap = 'round';
+		// context.setLineDash([]);
+
 		for( let l of links) {
 			// let lw = l.hasAttribute('lw')? l.lw : 2;
 			if(!l.display) continue;
@@ -360,6 +412,33 @@ function PDGView(hypergraph) {
 			// context.stroke();
 		}
 		
+		if(temp_link) {
+			let midpt = (temp_link.x == undefined) ? undefined : vec2(temp_link);
+			let tlpath = compute_link_shape(temp_link.srcs, temp_link.tgts, midpt);
+			
+			context.lineWidth = 3;
+			context.strokeStyle = "rgba(255,255,255,0.4)";
+			context.stroke( tlpath )
+			
+			context.lineWidth = 1.5;
+			context.strokeStyle = "black";
+			context.stroke( tlpath )
+		}
+		context.restore();
+		context.save();
+		// Draw Selection Rectangle
+		context.globalAlpha = 0.2;
+		if( action.type == 'box-select' && action.start) {
+			// console.log(...corners2xywh(select_rect_start, select_rect_end))
+			// context.save();
+			context.fillStyle="orange";
+			
+			// context.fillRect(select_rect_start.x, select_rect_start.y, select_rect_end.x, select_rect_end.y);
+			// let [xmin,ymin,w,h] = corners2xywh(select_rect_start, select_rect_end);
+			context.fillRect(...corners2xywh(action.start, action.end));
+			// context.stroke();
+			// context.restore();
+		}
 		
 		
 		//DEBUG: Draw ex and ey of nodes
@@ -396,10 +475,8 @@ function PDGView(hypergraph) {
 			}
 		});
 
-		// context.fillStyle="#888";
-		context.restore();
-
-	
+		context.fillStyle="#888";
+		
 		//draw the linknodes 
 		// linknodes.forEach(function(n) {
 		// 	context.moveTo(n.x, n.y);
@@ -408,8 +485,11 @@ function PDGView(hypergraph) {
 		// 	context.arc(n.x, n.y, 7, 0, 2 * Math.PI);
 		// 	context.fill();				
 		// });
+		// context.globalAlpha = 1;
+		context.restore();
 	}
-
+	
+	// Simlation Functions: forces, and initialization
 	function multi_avgpos_alignment_force(alpha) {
 		for(let n of nodes) {
 			if (n.components && n.components.length > 1) {
@@ -454,7 +534,6 @@ function PDGView(hypergraph) {
 			// ln.y += (ln.true_mid[1] + ln.offset[1] - ln.y) * strength * alpha;
 		}
 	}
-	
 	
 	function mk_bipartite_links(linknodes){
 		bipartite_links = []
@@ -507,17 +586,40 @@ function PDGView(hypergraph) {
 	} 
 	
 	simulation = d3.forceSimulation(nodes.concat(linknodes))
+		//// .force("charge", d3.forceManyBody().strength( -100))
+		// .force("link", d3.forceLink(links).id(l => l.id)
+		// 	.strength(1).distance(110).iterations(3))
+		// .force("anotherlink", d3.forceLink(parentLinks).id(n=>n.id)
+		// 		.strength(0.3).distance(40).iterations(2))d
+		// .force("avgpos_align", multi_avgpos_alignment_force)
 		.force("charge", filtered_force(d3.forceManyBody()
+			// .strength(n => n.display ? -100 : 0)
+			// .strength(n => n.link || n.components ? 0 : -120)
+			// .strength(n => (n.link || !n.display) ? 0 : -100)
 			.strength(-100)
 			.distanceMax(150), n => (!n.link && n.display) ))
 		.force("linkcharge", filtered_force(d3.forceManyBody()
+			// .strength(n => n.display ? -100 : 0)
+			// .strength(n => n.link || n.componebnts ? 0 : -120)
 			.strength(-100)
 			.distanceMax(40),  n => !!n.link))
 		.force("midpt_align", midpoint_aligning_force)
+		// .force("bipartite", d3.forceLink(mk_bipartite_links(links)).id(l => l.id)
+		// 	// .strength(l => 70/l.separation)
+		// 	.distance(l => l.separation).iterations(3))
 		.force("bipartite", custom_link_force(mk_bipartite_links(linknodes)).id(l => l.id)
+			// .distance(l => [l.separation*1, l.separation*1]).iterations(3))
+			// .strength(1) 
 			.distance(l => [l.separation / STRETCH_FACTOR, 
 							l.separation * STRETCH_FACTOR]).iterations(3))
+		// .force("nointersect", d3.forceCollide().radius(n => n.display ? n.w/2 : 0)
+		// 		.strength(0.5).iterations(5))
+		// .force("nointersect_old", d3.forceCollide().radius(
+		// 			n => n.display ? n.w/2 : (n.link ? 5 : 0))
+		// 		.strength(1).iterations(1))
 		.force("nointersect", custom_collide_force()
+			// .nodeFilter(n => !n.link)
+			// .strength(0.7)
 			.iterations(3))
 		// .force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.01))
 		.on("tick", ontick)
@@ -525,7 +627,7 @@ function PDGView(hypergraph) {
 	simulation.alphaDecay(0.05);
 		
 	setTimeout(reinitialize_node_positions, 10);
-	
+
 	
 	function fresh_label(prefix="p") {
 		existing = links.map( l => l.label);
@@ -573,7 +675,7 @@ function PDGView(hypergraph) {
 		return ob;
 	}
 	function align_node_dom() {
-		let nodedata = svgg.selectAll(".node").data(nodes, n => n.id);
+		let nodedata = svg.selectAll(".node").data(nodes, n => n.id);
 		let newnodeGs = nodedata.enter()
 			.append("g")
 			.classed("node", true);
@@ -601,7 +703,7 @@ function PDGView(hypergraph) {
 		}
 	}
 	function restyle_links() {
-		let lndata = svgg.selectAll(".linknode").data(linknodes, ln => ln.link.label);
+		let lndata = svg.selectAll(".linknode").data(linknodes, ln => ln.link.label);
 		
 		let newlnGs = lndata.enter().append("g").classed("linknode", true);
 		newlnGs.append("text").classed("bg", true);
@@ -615,9 +717,9 @@ function PDGView(hypergraph) {
 		lndata.selectAll("text").text(ln => ln.link.label);		
 	}
 	function restyle_nodes() {
-		/*** Now for somedd svgg operations. ***/
+		/*** Now for somedd SVG operations. ***/
 		// let nodedata = 
-		svgg.selectAll(".node").data(nodes, n => n.id)
+		svg.selectAll(".node").data(nodes, n => n.id)
 			// .attr("transform", n => "translate(" + lookup[n].x + ","+lookup[n].y +")")
 			// .classed("selected", n => lookup[n].selected );
 			.attr("transform", n => "translate(" + n.x + ","+ n.y +")")
@@ -628,7 +730,7 @@ function PDGView(hypergraph) {
 		for(let i = 0; i < links.length; i++) {
 			l = links[i];
 			// console.log("... |link ", l.label, l.source, l.target,
-				// " --> remove? ",l.srcs.indexOf(n.id) >= 0 || l.tgts.indexOf(n.id) >= 0);
+			 	// " --> remove? ",l.srcs.indexOf(n.id) >= 0 || l.tgts.indexOf(n.id) >= 0);
 			// This test only works if this is the link object in a real force!!
 			// if(l.source.id == n.id || l.target.id == n.id)
 			// if(l.source == n.id || l.target == n.id)
@@ -719,21 +821,112 @@ function PDGView(hypergraph) {
 		context.restore();
 	}
 	
-	function box_select(start, end, shift) {
-		let [xmin,ymin,w,h] = corners2xywh(start,end);
-		let xmax = xmin + w, 
+	d3.select(canvas).call(d3.drag()
+			.container(canvas)
+			.clickDistance(10)
+			.subject(function(event) {
+					// console.log("drag.subject passed : ", event)
+					if (action.type == 'box-select') return true;
+					// else if(action.type == '')
+					if (mode == 'draw' && temp_link) return undefined;
+					// else {
+
+					let o = pickN(event);
+					if(o) return o;
+					let ln = pickL(event,6,true);
+					if(ln) return ln;
+
+					//  if in draw mode, 
+					//  create new link source (empty srcs) beginning at target
+					if(mode == 'draw') {
+						let lo = {link: linkobject(['templink', [[],[]]]), x: event.x, y: event.y};
+						return lo;
+					}
+					// }
+				})
+			.on("start", dragstarted)
+			.on("drag", dragged)
+			.on("end", dragended)
+		);
+	function dragstarted(event) {
+		if(popup_process) clearTimeout(popup_process);
+			
+		if (action.type == 'box-select') {
+			action.start = vec2(event);
+			action.end = vec2(event);
+			ontick();
+			console.log("DRAGSTART", action)
+		}
+		else if(mode == 'move') {
+			// if there are no other drag handlers currently firing.
+			// apparently useful mostly in multi-touch scenarios.
+			if (!event.active) simulation.alphaTarget(0.5).restart();
+			if(event.subject.link)  {// it's a link
+				event.subject.initial_offset = event.subject.offset;
+			} else {  // if it's a node
+				event.subject.fx = event.subject.x;
+				event.subject.fy = event.subject.y;
+			}
+		}
+		else if (mode == 'draw') {
+			if(event.subject.link)  { // if it's an edge
+				let l = event.subject.link;
+				l.display = false; // don't display until it's cancelled or released. 
+				temp_link = linkobject(['<TEMPORARY>', [l.srcs, ["<MOUSE>"].concat(l.tgts)]]);
+				temp_link.based_on = l;
+				temp_link.x = event.subject.x;
+				temp_link.y = event.subject.y;
+				// temp_link.unit
+			} else { // drag.subject is a node.
+				temp_link = linkobject(['<TEMPORARY>', [[event.subject.id], ["<MOUSE>"]]]);
+			}
+			ontick();
+		}
+	}
+	function dragged(event) {
+		// console.log(event);
+		if (action.type == 'box-select') {
+			action.end = vec2(event);
+			ontick();
+		}
+		else if(mode == 'move') {
+			if(event.subject.link)  { // if it's an edge
+				// console.log(event);
+				// event.subject.offset[0] += event.dx;
+				// event.subject.offset[1] += event.dy;
+			} else {// it's a node
+				event.subject.fx = event.x;
+				event.subject.fy = event.y;
+			}
+		} 
+		else if (mode == 'draw') {
+			// mouse_pt = vec2(event);
+			lookup["<MOUSE>"] = {x: event.sourceEvent.x,
+							y: event.sourceEvent.y,
+							w:1,h:1
+							// setting to negative 9 means the arrow is only shortened 1 pixel.
+							// w: -9, h: -9
+						};
+			// ontick();
+			redraw();
+		}
+	}
+	function dragended(event) {
+		if(action.type == 'box-select') {
+			let [xmin,ymin,w,h] = corners2xywh(action.start, vec2(event));
+			let xmax = xmin + w, 
 				ymax = ymin + h;
-	
-		finalnode = pickN(end);
+
+			finalnode = pickN(event);
 
 			for(let objn of nodes) {
 				if (objn.x >= xmin && objn.x <= xmax && objn.y >= ymin && objn.y <= ymax || objn == finalnode) {
-					objn.selected = shift ? !objn.selected : true;
+					objn.selected = event.sourceEvent.shiftKey ? !objn.selected : true;
 					// console.log((objn.selected?"":"un")+"selecting  ", objn.id, event);
 					// console.log((objn.selected?"":"un")+"selecting "+objn.id);
 				} else {
 					// console.log(event, event.sourceEvent.ctrlKey, event.sourceEvent.shiftKey);
-					if(! shift && objn.selected ) {
+					if(! event.sourceEvent.shiftKey && objn.selected ) {
 						// 0 -> 0 (unselected); 1 -> 2 (demote primary selection); (2 -> 1)
 						objn.selected = false;
 					}
@@ -746,9 +939,9 @@ function PDGView(hypergraph) {
 			for(let ln of linknodes ){
 				let l = ln.link;
 				if (ln.x >= xmin && ln.x <= xmax && ln.y >= ymin && ln.y <= ymax) {
-					l.selected = shift ? !l.selected : true;
+					l.selected = event.sourceEvent.shiftKey ? !l.selected : true;
 				} else {
-					if(! shift && l.selected ) {
+					if(! event.sourceEvent.shiftKey && l.selected ) {
 						l.selected = false;
 					}
 				}
@@ -758,14 +951,223 @@ function PDGView(hypergraph) {
 				}
 			}
 			
+			select_rect_start = null;
+			select_rect_end = null;
+			action = {};
 			restyle_links();
 			ontick();
 		}
-	function point_select(pt, toggle) {
-		let obj = pickN(pt), link = pickL(pt);
+		if(mode == 'move') {
+			if (!event.active){
+				// simulation.alpha(1.2).alphaTarget(0).restart();	
+				simulation.alphaTarget(0);
+			} 
+			
+			if(event.subject.link)  { // if it's an edge
+				// console.log("FINISH DRAG", event);
+				// event.subject.offset = [ 
+				// 		event.subject.initial_offset[0] + event.,
+				// 		event.subject.initial_offset[1] + event.dy ]
+			} else {// it's a node	
+				if(!event.subject.expanded) {
+					event.subject.fx = null;
+					event.subject.fy = null;
+				}
+			}
+		}
+		else if (mode == 'draw' && temp_link) {
+			let newtgts = [], newsrcs = [];
+			
+			let pickobj = pickN(event.sourceEvent);
+			if( pickobj ) {
+				// disable self-edges (for now) --- they're very annoying and easy to make by accident
+				if((temp_link.srcs.length == 1) && (temp_link.srcs[0] == pickobj.id)) {
+					temp_link = null;
+					console.log("aborting; no self loop");
+					redraw();
+					return;
+				}
+				
+				newtgts.push(pickobj.id);
+			} else { // no pick object. 
+				pickl = pickL(event.sourceEvent, 25);
+				if(pickl) {
+					if(pickl == temp_link.based_on){
+						temp_link.based_on.display = true;
+						temp_link = null;
+						ontick(); 
+						return;
+					}
+					newsrcs.push(...pickl.srcs);
+					newtgts.push(...pickl.tgts.filter( n => !newtgts.includes(n)));
+					remove_link(pickl);
+				} else {
+					// create new edge (Or abandon?)
+					pickobj = new_node(fresh_node_name(), event.x, event.y);
+					if(!newtgts.includes(pickobj.id)) newtgts.push(pickobj.id);
+					
+					
+					// don't bother making a link if it was just a click;
+					// just make the new node.
+					// console.log(event, temp_link, action);
+					if(temp_link.srcs.length == 0 && mag(subv(vec2(event), vec2(temp_link))) <= 20) {
+						temp_link = null; ontick();	return;
+					}
+				}
+			}
+			if(event.subject.link) { // event source was a link
+				newtgts.push(...event.subject.link.tgts.filter( n => !newtgts.includes(n)));
+				remove_link(event.subject.link);
+			}
+
+
+			// let newtgts = [pickobj.id] // do I maybe want to do this at end?
+			newsrcs.push(... temp_link.srcs.filter( n => !newsrcs.includes(n)));
+			new_link(newsrcs, newtgts, fresh_label(), [temp_link.x, temp_link.y]);
+			simulation.alpha(0.5).alphaTarget(0).restart();
+			
+			temp_link = null;
+			ontick();
+		}
+	}
+	
+	function set_mode(mode) {
+		$("#drag-mode-toolbar button[data-mode='"+mode+"']").click();
+	}
+	
+	canvas.addEventListener("dblclick", function(e) {
+		let obj = pickN(e), link = pickL(e);
+		if(obj) { // rename selected node
+			// EXPANDING CODE
+			// if(!obj.expanded) {
+			// 	simulation.stop();
+			// 	obj.expanded = true;
+			// 	obj.old_wh = [obj.w, obj.h];
+			// 	// [obj.w, obj.h] = [550,250];
+			// 	[obj.w, obj.h] = [200,150];
+			// 	[obj.fx, obj.fy] = [obj.x, obj.y];
+			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// 
+			// 	for(let ln of linknodes) {
+			// 		// if l.srcs or l.tgts includes n,
+			// 		// then set strength to zero?
+			// 		// set distance?
+			// 	}
+			// }
+			// else {
+			// 	obj.expanded = false;
+			// 	[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
+			// 	delete obj.fx
+			// 	delete obj.fy;
+			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// }
+			// align_node_dom();
+			
+			
+			//RENAMING CODE
+			let name = promptForName("Enter New Variable Name", obj.id, nodes.map(n=>n.id));
+			if(!name) return;
+			
+			let replacer = nid => (nid == obj.id) ? name : nid;
+			//TODO this will leave parentLinks in the dust...
+			for(let l of links) {
+				l.srcs = l.srcs.map(replacer);
+				l.tgts = l.tgts.map(replacer);
+				l.source = l.srcs.join(",");
+				l.target = l.tgts.join(",");
+			}
+			delete lookup[obj.id];
+			obj.id = name;
+			lookup[name] = obj;
+			align_node_dom();
+		} else if(link) { // rename selected cpd
+			
+			
+		} else { // nothing selected; create new variable here.
+			setTimeout(function() {
+				let name = promptForName("Enter A Variable Name", fresh_node_name(), nodes.map(n=>n.id));
+				if(!name) return;
+				
+				newtgt = new_node(name, e.x, e.y);
+				if(temp_link) {
+					// todo: fold out this functionality, shared with click below.
+					new_tgts = temp_link.tgts.slice(1);
+					new_tgts.push(newtgt.id);
+					new_link(temp_link.srcs, new_tgts, fresh_label(), [temp_link.x, temp_link.y]);
+					temp_link = null;
+				}
+				ontick();
+			}, 10);
+		}		
+		// if(e.ctrlKey || e.metaKey) {
+		// }
+	});
+	canvas.addEventListener("click", function(e) {
+		// ADD NEW NODE
+		// if(e.ctrlKey || e.metaKey) {
+		if( temp_link ) {
+			let newtgt = pickN(e);
+			if(!newtgt && mode == 'draw') {
+				newtgt = new_node(fresh_node_name(), e.x, e.y);
+			}
+			if(newtgt) {
+				if(!e.shiftKey) {
+					new_tgts = temp_link.tgts.slice(1);
+					new_tgts.push(newtgt.id);
+					new_link(temp_link.srcs, new_tgts, fresh_label(), [temp_link.x, temp_link.y]);
+					temp_link = null;
+				}
+				else {
+					temp_link.tgts.push(newtgt.id);
+				}
+			}	
+		} else if(action.type == 'move') {
+			mouse_end = vec2(lookup['<MOUSE>']);
+			
+			action.targets.forEach(n => {
+				[n.x, n.y] = addv(n.old_pos, mouse_end, scale(action.mouse_start, -1)); 
+				delete n.old_pos;
+			});
+			
+			function adjust_seps(ln, n, nsibls, isloop) {
+				// ln.sep[n] = mag(subv(vec2(ln), vec2(lookup[n])));
+				let p = vec2(ln), 
+					q = vec2(lookup[n]),
+					wh = [lookup[n].w, lookup[n].h];
+				let cur_sep = mag(subv(sqshortened_end(q,p,[ln.w,ln.h]),
+									 sqshortened_end(p,q, wh) ));
+				let cur_sep_want = ln.sep && ln.sep[n]? ln.sep[n] :
+				 	default_separation(nsibls,isloop)
+				
+				if(cur_sep > cur_sep_want * STRETCH_FACTOR ||
+					 	cur_sep < cur_sep_want / STRETCH_FACTOR) 
+					ln.sep[n] = cur_sep;
+			}
+			
+			for(let ln of linknodes) {
+				if(action.targets.includes(ln)) {
+					ln.sep = {}
+					// ## TEMPORARILY COMMENTED OUT; KEEP SEPS SAME
+					// for(let n of ln.link.srcs) 
+					// 	adjust_seps(ln, n, ln.link.srcs.length, ln.link.tgts.includes(n))
+					// 
+					// for(let n of ln.link.tgts) 
+					// 	adjust_seps(ln, n, ln.link.tgts.length, ln.link.srcs.includes(n))
+				}
+			}
+			simulation.force("bipartite").links(mk_bipartite_links(linknodes));
+
+			// for(let n of action.targets) {
+			// 
+			// }
+			action = {};
+			restyle_nodes();
+			
+		} else if(mode == 'move') { // selection in manipulate mode
+			let obj = pickN(e), link = pickL(e);
 			
 			if( obj || link)  {
-				if( toggle )  {
+				if( !e.shiftKey)  {
 					nodes.forEach( n => {if(n != obj) n.selected=false;} );
 					links.forEach( l => {if(l != link) l.selected=false;} );
 				}
@@ -785,147 +1187,163 @@ function PDGView(hypergraph) {
 				restyle_nodes();
 				restyle_links();
 			}
-	}
-	function stroke(temp_link, endpt) {
-		let newtgts = [], newsrcs = [];
-		
-		let pickobj = pdg.pickN(endpt);
-		if( pickobj ) {
-			// disable self-edges (for now) --- they're very annoying and easy to make by accident
-			if((temp_link.srcs.length == 1) && (temp_link.srcs[0] == pickobj.id)) {
-				// temp_link = null;
-				console.log("aborting; no self loop");
-				repaint();
-				return;
-			}
-						
-			newtgts.push(pickobj.id);
-		} else { // no pick object. 
-			pickl = pickL(endpt, 25);
-			if(pickl) {
-				if(pickl == temp_link.based_on){
-					// don't do anything if based_on == final link
-					temp_link.based_on.display = true;
-					// temp_link = null;
-					ontick(); 
-					return;
-				}
-				newsrcs.push(...pickl.srcs);
-				newtgts.push(...pickl.tgts.filter( n => !newtgts.includes(n)));
-				remove_link(pickl);
-			} else {
-				// create new edge (Or abandon?)
-				pickobj = new_node(fresh_node_name(), endpt.x, endpt.y);
-				if(!newtgts.includes(pickobj.id)) newtgts.push(pickobj.id);
-				
-				
-				// don't bother making a link if it was just a click;
-				// just make the new node.
-				// console.log(event, temp_link, action);
-				if(temp_link.srcs.length == 0 && mag(subv(vec2(endpt), vec2(temp_link))) <= 20) {
-					pdg.tick();	return;
-				}
-			}
 		}
-		// if(event.subject.link) { // event source was a link
-		// 	newtgts.push(...event.subject.link.tgts.filter( n => !newtgts.includes(n)));
-		// 	remove_link(event.subject.link);
+		// else if(mode == 'select'){
+		// 	let link = pickL(e);
+		// 	if(link) link.selected = !link.selected;
+		// 	// console.log("[Click] " + (link.selected?"":"un")+"selecting  ", link.label, e);
+		// 	redraw();
 		// }
-		if(temp_link.based_on) { // event source was a link
-			newtgts.push(...temp_link.based_on.tgts.filter( n => !newtgts.includes(n)));
-			remove_link(temp_link.based_on);
-		}
-
-
-		// let newtgts = [pickobj.id] // do I maybe want to do this at end?
-		newsrcs.push(... temp_link.srcs.filter( n => !newsrcs.includes(n)));
-		new_link(newsrcs, newtgts, fresh_label(), [temp_link.x, temp_link.y]);
-		simulation.alpha(0.5).alphaTarget(0).restart();
+	});
+	window.addEventListener("keydown", function(event){
+		// console.log(event);
 		
-		pdg.tick();	
-	}
-	function rename_node(old_name, new_name) {
-		obj = lookup[old_name];
-		let replacer = nid => (nid == obj.id) ? new_name : nid;
-		//TODO this will leave parentLinks in the dust...
-		for(let l of links) {
-			l.srcs = l.srcs.map(replacer);
-			l.tgts = l.tgts.map(replacer);
-			l.source = l.srcs.join(",");
-			l.target = l.tgts.join(",");
+		if(event.key == 'Escape'){
+			if ( temp_link ) {
+				if(temp_link.based_on ) 
+					temp_link.based_on.display = true;
+				
+				temp_link = null;
+				redraw();
+			}
+			else if( action.type == 'move') {
+				action.targets.forEach(n => {
+					[n.x, n.y] = n.old_pos;
+					delete n.old_pos;
+				});
+			}
+			action = {};
+			ontick();
 		}
-		delete lookup[obj.id];
-		obj.id = new_name;
-		lookup[new_name] = obj;
-		align_node_dom();
-	}	
-	function delete_selection() {		
-		simulation.stop();
-		nodes = nodes.filter(n => !n.selected);
+		else if (event.key == 'a') {
+			let all_selected = true;
+			for(let s of nodes.concat(links)) {
+				if(! s.selected) 
+					all_selected = false;
+				s.selected = true;
+			}
+			if(all_selected) {
+				for(let s of nodes.concat(links))
+					s.selected = false;
+			}
+			restyle_nodes();
+			restyle_links();
+			redraw();
+		}
+		else if (event.key.toLowerCase() == 'b') {
+			// $("#drag-mode-toolbar button[data-mode='select']").click();
+			// set_mode('select');
+			
+			action = {
+				type: "box-select",
+				end : null,
+				start : null
+			}
+		}
+		else if (event.key.toLowerCase() == 't') {
+			// start creating arrows.
+			// 1. Create new arrow from selection at tail
+			src = nodes.filter( n => n.selected ).map( n => n.id );
+			// lab = fresh_label();
+			// temp_link = new_link(src, ['<MOUSE>'], "<TEMPORARY>");
+			temp_link = linkobject(['<TEMPORARY>', [src, ["<MOUSE>"]]], undefined)
+			if( src.length == 0) {
+				temp_link.x = lookup["<MOUSE>"].x
+				temp_link.y = lookup["<MOUSE>"].y
+			}
+			// set_mode('draw');
+			// links.push(temp_link);
+		}
+		else if (event.key == ' ') {
+			event.preventDefault();
+			// simulation.alphaTarget(0.05).restart();
+			simulation.alpha(2).alphaTarget(0).restart();
+			
+			if(mode == 'move') {
+			}
+			if(mode == 'select') {
+				// TODO shift selection to backup selection (red color)
+			}
+		}
+		else if (event.key.toLowerCase() == 'x') {
+			simulation.stop();
+			nodes = nodes.filter(n => !n.selected);
 			// for(let i = 0; i < )
-		links_to_remove = links.filter( l => l.selected);
-		links_to_remove.map(remove_link);
-		align_node_dom();
-	}
-	function select_all() {
-		let all_selected = true;
-		for(let s of nodes.concat(links)) {
-			if(! s.selected) 
-				all_selected = false;
-			s.selected = true;
+			links_to_remove = links.filter( l => l.selected);
+			links_to_remove.map(remove_link);
+			align_node_dom();
 		}
-		if(all_selected) {
-			for(let s of nodes.concat(links))
-				s.selected = false;
+		else if (event.key == 'd') {
+			set_mode("draw");
 		}
-		restyle_nodes();
-		restyle_links();
-		repaint();
-	}
+		else if (event.key == 'm') {
+			set_mode("move");
+		}
+		else if (event.key == "g") {
+			simulation.stop();
+			// move selection with mouse
+			
+			action = {
+				type : "move", 
+				mouse_start : vec2(lookup["<MOUSE>"]),
+				targets: nodes.filter(n => n.selected).concat(linknodes.filter(ln => ln.link.selected)) 
+			}
+			
+			action.targets.forEach( n => {
+				n.old_pos = vec2(n);
+			});
+		}
+		else if (event.key == "s") {
+			
+		}
+
+	});
+	canvas.addEventListener("wheel", function(e) {
+		// console.log("canvas", e.wheelDelta );
+		// lover = pickL(e, width=10);
+		
+		//# code to change LINE WIDTH
+		// if(lover.lw == undefined) lover.lw=2;
+		// lover.lw = (lover.lw + sgn(e.wheelDelta) );
+		
+		
+		ontick();
+		// console.log(lover);
+	});
+	window.addEventListener("mousemove", function(e) {
+		// mouse_pt = [e.x, e.y];
+		lookup["<MOUSE>"] = {x : e.x, y: e.y, w:0,h:0};
+		if(temp_link) redraw();
+		
+		if(popped_up_link && !picksL(e, popped_up_link, 10)) {
+			delete popped_up_link.lw;
+			popped_up_link = null;
+			ontick();
+		}
+		
+		if(popup_process) clearTimeout(popup_process);
 	
-	function handle(action) {
-		if(action.type == 'box-select') {
-			box_select(action.start, action.end, action.shift);
-		} else if( action.type == "edge-stroke") {
-			stroke(action.temp_link, action.endpt);
+		if( !popped_up_link) {
+			popup_process = setTimeout(function() {
+				let l = pickL(e, 10);
+				popped_up_link = l;
+
+				if(l) {
+					l.lw = 5;
+					ontick();
+				}
+			}, 100);
 		}
-	}
-	
-	
-	return {
-		sim : simulation,
-		load : load,
-		tick : ontick,
-		draw : draw,
-		handle: handle,
-		new_node : new_node,
-		new_link : new_link,
-		point_select : point_select,
-		rename_node : rename_node,
-		select_all : select_all,
-		delete_selection : delete_selection,
-		get state() {
-			return current_hypergraph();
-		},
-		get selected_node_ids() {
-			return nodes.filter( n => n.selected ).map( n => n.id );
-		},
-		get all_node_ids() {
-			return nodes.map( n => n.id );
-		},
-		// these are sketchier
-		nodes : nodes,
-		linknodes : linknodes,
-		links : links,
-		lookup : lookup,
-		pickL : pickL,
-		pickN : pickN,
-		picksL : picksL,
-		restyle_nodes  : restyle_nodes,
-		restyle_links  : restyle_links,
-		compute_link_shape : compute_link_shape,		
-		repaint_via : function(redraw) {
-			repaint = redraw
+
+		// if ( mode == 'move'  && action) {
+		if(action.type == 'move') {
+			action.targets.forEach(n => {
+				[n.x, n.y] = addv(n.old_pos, vec2(e), scale(action.mouse_start, -1)); 
+			});
+			restyle_nodes();
+			// midpoint_aligning_force(1);
+			ontick();
+			// TODO move selection, like ondrag below
 		}
-	}
-}
+	})
+});
