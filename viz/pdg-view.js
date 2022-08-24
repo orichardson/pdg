@@ -31,12 +31,14 @@ function linkobject([label, [src,tgt]], i) {
 	}
 }
 
-function PDGView(hypergraph) {
+function PDGView(hypergraph, mousept) {
 		//data from pdgviz.js
 	let nodes = [];
 	let links = [];
 	let linknodes = [];
-	let lookup = [];
+	// let lookup = [];
+	let lookup = { "<MOUSE>" :  mousept };
+	
 	// let lookup = {
 	// 	// get ["<MOUSE>"]() {
 	// 	// 	return { x : 0, y : 0, w : 0, h : 0};
@@ -46,13 +48,14 @@ function PDGView(hypergraph) {
 	let parentLinks = [];
 	let repaint = () => undefined
 	
+	let sim_mode = "linknodes only";  // can also be "all"
 	
 	let canvas = document.getElementById("canvas")
 	let context = canvas.getContext("2d");
 	
 	// let 
 		
-	simulation = undefined
+	let simulation = undefined
 	// 
 	svgg = d3.select("#svg").append("g")
 		.classed("PDG", true)
@@ -68,7 +71,7 @@ function PDGView(hypergraph) {
 		
 		// clear state
 		parentLinks = [];
-		lookup = [];
+		lookup = { "<MOUSE>" :  mousept };
 		nodes = [];
 		linknodes = [];
 		links = []
@@ -120,10 +123,14 @@ function PDGView(hypergraph) {
 		// if simulation exists, update nodes & edges of simulation + restart.
 		if(typeof simulation != "undefined") {
 			simulation.nodes(nodes.concat(linknodes));
+			// update_simulation();
 			restyle_nodes();
 			restyle_links();
-
-			simulation.force('bipartite').links(mk_bipartite_links(links));
+			// 
+			// console.log(links.map(l => l.srcs));
+			// console.log(linknodes.map(ln => ln.link));
+			// simulation.force('bipartite').links(mk_bipartite_links(links));
+			simulation.force('bipartite').links(mk_bipartite_links(linknodes));
 			
 			if( ! hypergraph.viz ){
 				reinitialize_node_positions();
@@ -330,6 +337,7 @@ function PDGView(hypergraph) {
 			n.y = clamp(n.y, n.h/2, canvas.height - n.h/2);
 		});
 		
+		
 		restyle_nodes();
 		restyle_links();
 		repaint();
@@ -457,7 +465,7 @@ function PDGView(hypergraph) {
 	
 	
 	function mk_bipartite_links(linknodes){
-		bipartite_links = []
+		let bipartite_links = []
 		// for( let l of links) {
 		// let lname = "ℓ" + l.label;
 		for( let ln of linknodes) {
@@ -505,27 +513,34 @@ function PDGView(hypergraph) {
 		ontick(); 
 		simulation.alpha(2).restart();
 	} 
-	
-	simulation = d3.forceSimulation(nodes.concat(linknodes))
-		.force("charge", filtered_force(d3.forceManyBody()
-			.strength(-100)
-			.distanceMax(150), n => (!n.link && n.display) ))
-		.force("linkcharge", filtered_force(d3.forceManyBody()
-			.strength(-100)
-			.distanceMax(40),  n => !!n.link))
-		.force("midpt_align", midpoint_aligning_force)
-		.force("bipartite", custom_link_force(mk_bipartite_links(linknodes)).id(l => l.id)
-			.distance(l => [l.separation / STRETCH_FACTOR, 
-							l.separation * STRETCH_FACTOR]).iterations(3))
-		.force("nointersect", custom_collide_force()
-			.iterations(3))
-		// .force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.01))
-		.on("tick", ontick)
-		.stop();
-	simulation.alphaDecay(0.05);
-		
-	setTimeout(reinitialize_node_positions, 10);
-	
+	function mk_simulation() {
+		simulation = d3.forceSimulation(nodes.concat(linknodes))
+			.force("charge", filtered_force(d3.forceManyBody()
+				.strength(-100)
+				.distanceMax(150), n => (!n.link && n.display) ))
+			.force("linkcharge", filtered_force(d3.forceManyBody()
+				.strength(-100)
+				.distanceMax(40),  n => !!n.link))
+			.force("midpt_align", midpoint_aligning_force)
+			.force("bipartite", custom_link_force(mk_bipartite_links(linknodes)).id(l => l.id)
+				.distance(l => [l.separation / STRETCH_FACTOR, 
+								l.separation * STRETCH_FACTOR]).iterations(3))
+			.force("nointersect", custom_collide_force()
+				.iterations(3))
+			// .force("center", d3.forceCenter(canvas.width / 2, canvas.height / 2).strength(0.01))
+			.on("tick", ontick)
+			.stop();
+		simulation.alphaDecay(0.05);
+			
+		setTimeout(reinitialize_node_positions, 10);
+	}
+	function update_simulation() {
+		if (typeof simulation != 'undefined') {
+			simulation.nodes(nodes.concat(linknodes));
+			simulation.force("bipartite").links(mk_bipartite_links(linknodes));
+			simulation.restart();
+		}
+	}
 	
 	function fresh_label(prefix="p") {
 		existing = links.map( l => l.label);
@@ -593,12 +608,12 @@ function PDGView(hypergraph) {
 		nodedata.selectAll("text").text(n => n.id);
 		nodedata.filter( n => ! n.display).attr('display', 'none');
 		
-		if (typeof simulation != 'undefined') {
-			simulation.nodes(nodes.concat(linknodes));
-			simulation.force("bipartite").links(mk_bipartite_links(linknodes));
-			
-			simulation.restart();
-		}
+		// if (typeof simulation != 'undefined') {
+		// 	simulation.nodes(nodes.concat(linknodes));
+		// 	simulation.force("bipartite").links(mk_bipartite_links(linknodes));
+		// 	simulation.restart();
+		// }
+		update_simulation();
 	}
 	function restyle_links() {
 		let lndata = svgg.selectAll(".linknode").data(linknodes, ln => ln.link.label);
@@ -891,6 +906,7 @@ function PDGView(hypergraph) {
 		}
 	}
 	
+	mk_simulation();
 	
 	return {
 		sim : simulation,
@@ -904,6 +920,7 @@ function PDGView(hypergraph) {
 		rename_node : rename_node,
 		select_all : select_all,
 		delete_selection : delete_selection,
+		update_simulation : update_simulation,
 		get state() {
 			return current_hypergraph();
 		},
@@ -913,11 +930,25 @@ function PDGView(hypergraph) {
 		get all_node_ids() {
 			return nodes.map( n => n.id );
 		},
+		get sim_mode() {	return sim_mode;	},
+		set sim_mode( mode ) {
+			// one of 'linknodes only' or 'all'
+			if(sim_mode !== mode) {
+				if(mode === "linknodes only"){
+					
+				} else if(mode === "all") {
+					// simulate();
+				}
+				else throw "invalid mode \""+ mode +"\"";
+				sim_mode = mode;
+			}
+		},
 		// these are sketchier
-		nodes : nodes,
-		linknodes : linknodes,
-		links : links,
-		lookup : lookup,
+		// nodes : nodes,
+		get nodes() { return nodes; },
+		get linknodes() { return linknodes; },
+		get links() { return links; },
+		get lookup() { return lookup; },
 		pickL : pickL,
 		pickN : pickN,
 		picksL : picksL,

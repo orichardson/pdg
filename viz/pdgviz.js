@@ -24,10 +24,12 @@ $(function() {
 		canvas.width = window.innerWidth;
 		canvas.height = window.innerHeight;
 		if(typeof simulation != "undefined") {
-			// simulation.force('center').x(canvas.width/2);
-			// simulation.force('center').y(canvas.height/2);
-			simulation.alpha(1).restart();
-			pdg.tick();
+			for(let pudga of pdgs) {
+			// pdg.sim.force('center').x(canvas.width/2);
+			// pdg.sim.force('center').y(canvas.height/2);
+				pudga.sim.alpha(1).restart();
+				pudga.tick();
+			}
 		}
 		// pdg.tick();
 	}
@@ -44,11 +46,11 @@ $(function() {
 	});
 	
 	
-	pdg = PDGView(hypergraph)
+	let mouse = { w : 0, h: 0 };
+	
+	pdg = PDGView(hypergraph, mouse);
 	pdgs =  [ pdg ]
 	
-	let mouse = { w : 0, h: 0 };
-	pdg.lookup["<MOUSE>"] = mouse;
 		
 	$('#save-button').click(function(e){
 		download_JSON(pdg.state, 'hypergraph');
@@ -163,7 +165,7 @@ $(function() {
 		else if(mode == 'move') {
 			// if there are no other drag handlers currently firing.
 			// apparently useful mostly in multi-touch scenarios.
-			if (!event.active) simulation.alphaTarget(0.5).restart();
+			if (!event.active) pdg.sim.alphaTarget(0.5).restart();
 			if(event.subject.link)  {// it's a link
 				event.subject.initial_offset = event.subject.offset;
 			} else {  // if it's a node
@@ -229,8 +231,8 @@ $(function() {
 		}
 		if(mode == 'move') {
 			if (!event.active){
-				// simulation.alpha(1.2).alphaTarget(0).restart();	
-				simulation.alphaTarget(0);
+				// pdg.sim.alpha(1.2).alphaTarget(0).restart();	
+				pdg.sim.alphaTarget(0);
 			} 
 			
 			if(event.subject.link)  { // if it's an edge
@@ -239,7 +241,7 @@ $(function() {
 				// 		event.subject.initial_offset[0] + event.,
 				// 		event.subject.initial_offset[1] + event.dy ]
 			} else {// it's a node	
-				if(!event.subject.expanded) {
+				if(!event.subject.expanded && pdg.sim_mode === "all") {
 					event.subject.fx = null;
 					event.subject.fy = null;
 				}
@@ -265,13 +267,13 @@ $(function() {
 		if(obj) { // rename selected node
 			// EXPANDING CODE
 			// if(!obj.expanded) {
-			// 	simulation.stop();
+			// 	pdg.sim.stop();
 			// 	obj.expanded = true;
 			// 	obj.old_wh = [obj.w, obj.h];
 			// 	// [obj.w, obj.h] = [550,250];
 			// 	[obj.w, obj.h] = [200,150];
 			// 	[obj.fx, obj.fy] = [obj.x, obj.y];
-			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// 	pdg.sim.alpha(2).alphaTarget(0).restart();
 			// 
 			// 	for(let ln of linknodes) {
 			// 		// if l.srcs or l.tgts includes n,
@@ -284,7 +286,7 @@ $(function() {
 			// 	[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
 			// 	delete obj.fx
 			// 	delete obj.fy;
-			// 	simulation.alpha(2).alphaTarget(0).restart();
+			// 	pdg.sim.alpha(2).alphaTarget(0).restart();
 			// }
 			// align_node_dom();
 			
@@ -350,6 +352,9 @@ $(function() {
 			
 			action.targets.forEach(n => {
 				[n.x, n.y] = addv(n.old_pos, mouse_end, scale(action.mouse_start, -1)); 
+				if(pdg.sim_mode === "linknodes only" && !n.link) {
+					[n.fx, n.fy] = [n.x,n.y];
+				}
 				delete n.old_pos;
 			});
 			
@@ -368,7 +373,7 @@ $(function() {
 					ln.sep[n] = cur_sep;
 			}
 			
-			for(let ln of linknodes) {
+			for(let ln of pdg.linknodes) {
 				if(action.targets.includes(ln)) {
 					ln.sep = {}
 					// ## TEMPORARILY COMMENTED OUT; KEEP SEPS SAME
@@ -379,13 +384,14 @@ $(function() {
 					// 	adjust_seps(ln, n, ln.link.tgts.length, ln.link.srcs.includes(n))
 				}
 			}
-			simulation.force("bipartite").links(mk_bipartite_links(linknodes));
-
+			// pdg.sim.force("bipartite").links(mk_bipartite_links(linknodes));
+			pdg.update_simulation();
+			// pdg.update_simulation();
 			// for(let n of action.targets) {
 			// 
 			// }
 			action = {};
-			restyle_nodes();
+			pdg.restyle_nodes();
 			
 		} else if(mode == 'move') { // selection in manipulate mode
 			pdg.point_select(e, !e.shiftKey);
@@ -447,8 +453,20 @@ $(function() {
 		}
 		else if (event.key == ' ') {
 			event.preventDefault();
-			// simulation.alphaTarget(0.05).restart();
-			simulation.alpha(2).alphaTarget(0).restart();
+			// pdg.sim.alphaTarget(0.05).restart();
+			
+			// if we're only simulating linknodes, then
+			// we still want to un-fix selected nodes on space to reorganize them.
+			action = {
+				type : "local-simulation",
+				targets : pdg.nodes.filter(n => n.selected)
+			};
+			if(pdg.sim_mode === "linknodes only") { 
+				action.targets.forEach(n => {delete n.fx; delete n.fy;})
+			}
+			
+			pdg.sim.alphaTarget(1.5).restart();
+			// pdg.sim.alpha(2).alphaTarget(0).restart();
 			
 			if(mode == 'move') {
 			}
@@ -466,7 +484,8 @@ $(function() {
 			set_mode("move");
 		}
 		else if (event.key == "g") {
-			simulation.stop();
+			// pdg.sim.stop();
+			pdg.sim.stop();
 			// move selection with mouse
 			
 			action = {
@@ -483,6 +502,14 @@ $(function() {
 			
 		}
 
+	});
+	window.addEventListener("keyup", function(event){
+		if(action.type === "local-simulation" && event.key == ' ') {
+			pdg.sim.alphaTarget(0);
+			if(pdg.sim_mode === "linknodes only") { 
+				action.targets.forEach( n => { [n.fx,n.fy] = [n.x,n.y]; });
+			}
+		}		
 	});
 	canvas.addEventListener("wheel", function(e) {
 		// console.log("canvas", e.wheelDelta );
@@ -532,6 +559,7 @@ $(function() {
 			action.targets.forEach(n => {
 				[n.x, n.y] = addv(n.old_pos, vec2(e), scale(action.mouse_start, -1)); 
 			});
+			// console.log(action.targets);
 			pdg.restyle_nodes();
 			// midpoint_aligning_force(1);
 			pdg.tick();

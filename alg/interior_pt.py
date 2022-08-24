@@ -3,11 +3,15 @@ from ..pdg import PDG
 from ..dist import RawJointDist as RJD
 
 import cvxpy as cp
+from cvxpy.constraints.exponential import ExpCone
 import numpy as np
 
 from collections.abc import Iterable
 from collections import namedtuple
 import itertools
+
+from operator import mul
+from functools import reduce
 
 # from collections import namedtuple
 # Tree
@@ -35,8 +39,12 @@ def marginalize_via_projector(mu, M, varis):
     return mu.T @ mk_projector(M.dshape, M._idxs(*varis))
 
 def marginalize(mu, shape, IDXs):
+     # to prevent strangeness with raveling for unit, just return the sum
+    if len(IDXs) == 0: 
+        return cp.sum(mu, keepdims=True)
+
     postshape = tuple(shape[i] for i in IDXs)
-    elts = [0] *  np.prod( postshape ) 
+    elts = [0] *  np.prod( postshape, dtype=int) 
         # preallocate list of the appropriate size. Will eventually hold 
         # scalar cp.expressions, which I will aggregate with cp.bmat
     ## will be converted to a cp.expression by operator overloading after addition.
@@ -57,16 +65,21 @@ def cpd2joint(cpt, mu_X):
     P = cpt.to_numpy()
     # print("P shape: ", P.shape, "\t μ_X shape : ", mu_X.shape)
     return cp.vstack([ P[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
+
+def n_copies( mu_X, n ):
+    """ an analogue of cpd2joint, which just does broadcasting, 
+        effectively with a "cpd" that is constant ones. """
+    # do a hstack, because we're not iterating over indices.
+    return cp.hstack( [ mu_X for _ in range(n) ] ).T
     
-    
-def cvx_opt_component( M : PDG ) :
+def cvx_opt_joint( M : PDG,  also_idef=True) :
     n = np.prod(M.dshape)
     mu = cp.Variable(n, nonneg=True)
     t = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
     # t = { L : cp.Variable(n) for L in M.edges("l") if 'π' not in L }
     
-    tol_constraints = [
-        cp.constraints.exponential.ExpCone(-t[L], 
+    beta_tol_constraints = [
+        ExpCone(-t[L], 
             #    mu.T @ mk_projector(M.dshape, M._idxs(X,Y)), 
                marginalize(mu, M.dshape, M._idxs(X,Y)),
                cp.vec(cpd2joint(p, marginalize(mu, M.dshape, M._idxs(X))) ))
@@ -76,18 +89,64 @@ def cvx_opt_component( M : PDG ) :
     
     prob = cp.Problem( 
         cp.Minimize( sum(βL * sum(t[L]) for βL,L in M.edges("β,l") if 'π' not in L) ),
-            [sum(mu) == 1] + tol_constraints )
+            [sum(mu) == 1] + beta_tol_constraints)
     prob.solve() 
     
+
+    # now, do the same thing again, but with prob.mu as initialization and new constraints
+    if also_idef: 
+        # first, save old solution.
+        oldmu_dist = RJD(mu.value.copy(), M.varlist) # : np.ndarray
+        oldmuPr = oldmu_dist.conditional_marginal
+        # conditional marginals must match old ones
+        cm_constraints = [
+                marginalize(mu, M.dshape, M._idxs(X,Y)) == 
+                cp.vec(cpd2joint(oldmuPr(Y|X), marginalize(mu, M.dshape, M._idxs(X)) ))
+            for L,X,Y,p in M.edges("l,X,Y,P") if 'π' not in L
+        ]
+        # the new objective is KL( mu || prod of marginals of oldmu.Pr )
+        # Or directly: use 1 instead of p to get only form.
+        Pr = oldmu_dist.prob_matrix
+        # fp = reduce(mul, [ Pr(Y|X) for X,Y in M.edges("X,Y")])
+        fp = np.prod( [ Pr(Y|X)**α for X,Y,α in M.edges("X,Y,α")] )
+        tt = cp.Variable(n)
+
+        new_prob = cp.Problem(
+            cp.Minimize(sum(tt)),
+            cm_constraints + [ ExpCone(-tt, mu, fp.reshape(-1) ), sum(mu) == 1]
+        )
+        new_prob.solve();
+        #########
+        ## UPDATE: this doesn't include the final -H(mu) term! How to fix?
+        ###
+        #  alpha_tol_constraints = [
+        #     cp.constraints.exponential.ExpCone(
+        #         -t[L], 
+        #         marginalize(mu, M.dshape, M._idxs(X,Y)),
+        #         cp.vec(n_copies(marginalize(mu, M.dshape, M._idxs(X)), len(Y)) ))
+        #     for L,X,Y in M.edges("l,X,Y") if 'π' not in L
+        #  ]
+        # new_prob = cp.Problem(
+        #     cp.Minimize(sum(αL * sum(t[L]) for αL,L in M.edges("α,l") if 'π' not in L)),
+        #     cm_constraints + alpha_tol_constraints + [sum(mu) == 1]
+        # )
+        # new_prob.solve();
+        ###########
+
+        
     
     ## save problem, etc as properties of method so you can get them afterwards.
-    cvx_opt_component.prob = prob
-    cvx_opt_component.t = t
+    cvx_opt_joint.prob = prob
+    cvx_opt_joint.t = t
     
     return RJD(mu.value, M.varlist)
 
 
-def cvx_opt( M, varname_clusters) :
+# like cvx_opt_joint, but in parallel over all clusters, with consistency constraints
+def cvx_opt_clusters( M, varname_clusters,  also_idef=True) :
+    if(varname_clusters == None):
+        varname_clusters = jtree_clusters(M)
+
     Cs = varname_clusters
     m = len(varname_clusters)
     
@@ -157,6 +216,11 @@ def cvx_opt( M, varname_clusters) :
     prob.solve()    
     
     print(prob.value)
+
+    if also_idef:
+        
+
+        raise NotImplemented
     
     ## save problem, etc as properties of method so you can get them afterwards.
     # return RJD(mu.value, M.varlist)

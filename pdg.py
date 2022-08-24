@@ -462,7 +462,8 @@ class PDG:
 				idxs.append(self.varlist.index(V))
 			elif '×' in V.name:
 				idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])        
-		
+		return idxs
+
 	def edges(self, fmt='XY'):
 		"""
 		Examples:
@@ -1084,8 +1085,13 @@ class PDG:
 	@staticmethod
 	def from_BN(bn : BayesianNetwork):
 		pdg = PDG();
-		varis = { vname : Variable(vals, name=vname) 
-			for (vname,vals) in  bn.states.items() }
+		# varis = { vname : Variable(vals, name=vname) 
+		# 	for (vname,vals) in  bn.states.items() }
+		# for n,V in varis.items():
+		# 	pdg += n, V
+
+		for (vname,vals) in  bn.states.items():
+			pdg += vname, Variable(vals, name=vname)
 
 		for cpd in bn.cpds:
 			pdg += CPT.from_pgmpy(cpd)

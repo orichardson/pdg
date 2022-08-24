@@ -6,10 +6,8 @@ from .rv import Variable as Var
 from .dist import CPT, RawJointDist as RJD
 
 # from typing import Iterable
-from operator import mul
-from functools import reduce
 
-
+from pgmpy.models import MarkovNetwork
 
 def canonical_varlist(factors):
     subs = '₀₁₂₃₄₅₆₇₈₉'
@@ -71,6 +69,16 @@ class FactorGraph:
                 
         # esimate Pr(vars)    
                 
+    def to_pgmpy_markov_net(self):
+        mn = MarkovNetwork()
+
+        mn.add_nodes_from(self._varlist)
+        for f in self.factors:
+            mn.add_edges_from([])
+            mn.add_factors( df )
+
+        raise NotImplemented
+        return mn
             
         
         

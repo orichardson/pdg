@@ -146,6 +146,9 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 			remainder = nto - set(data[a].keys())
 			if len(remainder) == 1:
 				data[a][next(iter(remainder))] = 1 - total
+			elif total == 1:
+				for b in remainder:
+					data[a][b] = 0
 
 		matrix = pd.DataFrame.from_dict(data , orient='index')
 		return cls(matrix, index=nfrom.ordered, columns=nto.ordered, nto=nto,nfrom=nfrom).check_normalized()
