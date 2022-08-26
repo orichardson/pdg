@@ -198,7 +198,9 @@ class PDG:
 
 	def _get_edgekey(self, spec):
 		label = None
+		# print(spec)	
 		if isinstance(spec, ConditionRequest):
+			# print(spec.given.name, spec.target.name)
 			gn,tn = spec.given.name, spec.target.name
 			# raise KeyError("Multiple options possible.")
 		elif type(spec) == tuple and type(spec[0]) is str:
@@ -1111,3 +1113,6 @@ class PDG:
 				factors.append(np.nan_to_num( broadcast(cpt) ** power, nan=1))
 		
 		return FactorGraph(factors, self.varlist)
+	
+	def to_markov_net(self, via='β'):
+		return self.to_FG(via).to_pgmpy_markov_net()

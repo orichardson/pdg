@@ -1,5 +1,6 @@
 from operator import mul
 from functools import reduce
+from itertools import combinations
 import numpy as np
 
 from .rv import Variable as Var
@@ -72,12 +73,14 @@ class FactorGraph:
     def to_pgmpy_markov_net(self):
         mn = MarkovNetwork()
 
-        mn.add_nodes_from(self._varlist)
+        mn.add_nodes_from([V.name for V in self._varlist])
         for f in self.factors:
-            mn.add_edges_from([])
-            mn.add_factors( df )
+            scope = [v.name for (i,v) in enumerate(self._varlist) if f.shape[i] > 1]
 
-        raise NotImplemented
+            mn.add_edges_from(combinations(scope,2));
+            mn.add_factors( f )
+
+        # raise NotImplemented
         return mn
             
         

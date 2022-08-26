@@ -109,6 +109,9 @@ class Variable(set, metaclass=utils.CopiedType):
 
     @property
     def atoms(self):
+        if self == Unit:
+            return
+            
         js = [s for s in self.structure if isinstance(s,JointStructure)]
         if len(js) == 0:
             yield self
