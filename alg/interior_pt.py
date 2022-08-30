@@ -142,7 +142,7 @@ def cvx_opt_joint( M : PDG,  also_idef=True) :
 def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs) :
 	if(varname_clusters == None):
 		print("no clusters given; using pgmpy junction tree to find some.")
-		varname_clusters = [V.name for V in jtree_clusters(M)]
+		varname_clusters = [V for V in jtree_clusters(M)]
 		print("FOUND: ",varname_clusters)
 
 	Cs = varname_clusters
@@ -164,9 +164,7 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 				% (L,X.name,Y.name) )
 
 	mus = [ cp.Variable(np.prod(shape)) for shape in cluster_shapes]
-	# mu = cp.Variable(n, nonneg=True) 
 	ts = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
-	# t = { L : cp.Variable(n) for L in M.edges("l") if 'π' not in L }
 	
 	tol_constraints = []
 	for L,X,Y,p in M.edges("l,X,Y,P"):
@@ -176,13 +174,6 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 			
 			idxs_XY = [C.index(N.name) for N in (X&Y).atoms]
 			idxs_X = [C.index(N.name) for N in X.atoms]
-			# idxs_XY = [C.index(N.name) for N in (X&Y).atoms if not N.is1]
-			# idxs_X = [C.index(N.name) for N in X.atoms if not N.is1]
-			
-			# idxs_XY = [j for j,vn in enumerate(C) if M.vars[vn] in (X & Y).atoms]
-			# print("For edge %s: %s → %s, in cluster "%(L,X.name,Y.name), C,
-			#     "idxs_XY =", idxs_XY)
-			# idxs_X = [j for j,vn in enumerate(C) if M.vars[vn] in X.atoms]
 			
 			expcone = cp.constraints.exponential.ExpCone(-ts[L], 
 			#    mus[i].T @ mk_projector(cluster_shapes[i], idxs_XY), 
@@ -210,7 +201,9 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 	
 	prob = cp.Problem( 
 		cp.Minimize( sum(βL * sum(ts[L]) for βL,L in M.edges("β,l") if 'π' not in L) ),
-			[sum(mus[i]) == 1 for i in range(m)] + tol_constraints + local_marg_constraints )
+			[sum(mus[i]) == 1 for i in range(m)]
+			+ [mus[i] >= 0 for i in range(m)]
+			+ tol_constraints + local_marg_constraints )
 	prob.solve(**solver_kwargs)    
 	
 	print(prob.value)
@@ -218,7 +211,6 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 	if also_idef:
 		# hmmm do we need to use Bethe entropy? Or Kikuchi approximations? Might not be cvx....
 		#  ... unless clusters are tree. But don't we need to prove it's cvx with the type system? 
-		
 		old_cluster_rjds = {}
 		for i,C in enumerate(Cs):
 			old_cluster_rjds[i] = RJD(mus[i].value.copy(), [M.vars[n] for n in C])
@@ -237,7 +229,6 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 
 				cpd = old_cluster_rjds[edgemap[L]].conditional_marginal(Y|X)
 				cpds[L] = cpd
-				# print(cpd)
 
 				cm_constraints.append(
 					marginalize(mus[i], sh, idxs_XY)
@@ -246,27 +237,17 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 				)
 
 
-		tts = [
-			cp.Variable( np.prod(shape)) for shape in cluster_shapes
-		]
+		tts = [ cp.Variable( np.prod(shape)) for shape in cluster_shapes ]
 		tol_constraints = []
 				
 		for i in range(m):
-			# Ls = [L for L,j in edgemap.items() if j == i]
-			# print([old_cluster_rjds[i].prob_matrix(Y|X).shape 
-			# 	for X,Y,L,α in M.edges("X,Y,L,α") if edgemap[L] == i] )
 			fp = np.prod( [1]+[old_cluster_rjds[i].prob_matrix(Y|X) **α 
 				for X,Y,L,α in M.edges("X,Y,L,α") if edgemap[L] == i] )
 
-			# print(fp.shape)
-			# print(fp)
-			# print()
-			# tts.append(Variable())
 			correction_elts = [1] * mus[i].size
 			for j in range(m):
-				# if i != j: # with sqrts, works
+				# if i != j: # for use with square roots
 				if i < j: # only single-count corrections?
-				# if False: # eliminate
 					common = set(Cs[i]) & set(Cs[j])
 					idxs = [k for k,vn in enumerate(Cs[i]) if vn in common]
 					if len(common) > 0:
@@ -275,17 +256,18 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 						
 						# want correction *= new_term, but no broadcasting b/c indices lost
 						# ... sooo instead ....
+						
+						#0. pre-compute the shape of the shared sepset 
 						newterm_vshape = tuple(cluster_shapes[i][k] for k in idxs)
 						for w,mu_w in enumerate(mus[i]):
-							v_idx = np.unravel_index(i, cluster_shapes[i])
+							#1. unravel the joint cluster i's world w into a value for each variable
+							v_idx = np.unravel_index(w, cluster_shapes[i])
+							#2. figure out what the appropriate flattened index into the
+							# marginal probability (new_term) should be. 
 							idx = np.ravel_multi_index(tuple(v_idx[j] for j in idxs), newterm_vshape)
 							correction_elts[w] *= new_term[idx]
 
 			correction = cp.hstack(correction_elts)
-			mult = (cp.multiply(fp.reshape(-1), correction))
-			# print("correction DCP? ", correction.is_dcp(), "... affine? ", correction.is_affine())
-			# print("mult DCP?", mult.is_dcp(), "... affine?", mult.is_affine())
-			# print("fp.shape", fp.shape)
 			
 			tol_constraints.append(ExpCone(
 				-tts[i],
@@ -294,15 +276,15 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 				cp.multiply(fp.reshape(-1), correction)
 				# fp.reshape(-1)
 			));
-			# print("expcone? ", tol_constraints[-1].is_dcp())
 
 		new_prob =cp.Problem(
-			# cp.Minimize(mus[0][0]),
 			cp.Minimize(sum(sum(tts[i]) for i in range(m))),
 			tol_constraints + 
 			cm_constraints + # conditional marginals
 			local_marg_constraints +  # marg constraints
 			[sum(mus[i]) == 1 for i in range(m)]
+			# the positivity constraint below is redundant because of the expcone shapes.
+			# + [mus[i] >= 0 for i in range(m)]
 		)
 		new_prob.solve(**solver_kwargs)
 		# raise NotImplemented

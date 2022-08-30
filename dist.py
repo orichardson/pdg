@@ -369,10 +369,16 @@ class RawJointDist(Dist):
 	def _idxs(self, *varis, multi=False):
 		idxs = []
 		for V in varis:
-			if V in self.varlist and (multi or V not in idxs):
-				idxs.append(self.varlist.index(V))
-			elif '×' in V.name:
-				idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])
+			##old version: split doesn't work well.
+			# if V in self.varlist and (multi or V not in idxs):
+			# 	idxs.append(self.varlist.index(V))
+			# elif '×' in V.name:
+			# 	idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])
+			## new version with atomic
+			for a in V.atoms:
+				if multi or (a not in idxs):
+					idxs.append(self.varlist.index(a))
+			##older version
 			#     for v in V.name.split('×'):
 			#         idxs.append([v])
 
@@ -506,6 +512,7 @@ class RawJointDist(Dist):
 		# print([t.name for t in tarvars], "|", [c.name for c in cndvars])
 		idxt = self._idxs(*tarvars)
 		idxc = self._idxs(*cndvars)
+		# print("idxt: ", idxt, " \tidxc", idxc)
 		IDX = idxt + idxc
 
 		N = len(self.varlist)

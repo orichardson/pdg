@@ -41,12 +41,12 @@ class FactorGraph:
             
         
     @property
-    def dist(self, use_torch=False):
+    def dist(self, **rjd_kwarg):
         """ warning: scales exponentially! """
         data = reduce(mul, self.factors)
         data /= data.sum()
         
-        return RJD(data, self.vars, use_torch=use_torch)
+        return RJD(data, self.vars, **rjd_kwarg)
     
     @property    
     def Z(self):
@@ -61,6 +61,8 @@ class FactorGraph:
     def gibbs_marginal_estimate(self, vars, init_sample=None, iters=1):
         sample = init_sample if init_sample is not None \
             else {v.name : np.random.choice(v) for v in self.vars}
+            
+        raise NotImplemented
         
         for it in range(iters):
             for v in self.vars: # go over ALL variables;
@@ -71,14 +73,19 @@ class FactorGraph:
         # esimate Pr(vars)    
                 
     def to_pgmpy_markov_net(self):
+        from pgmpy.models import MarkovNetwork
+        from pgmpy.factors.discrete import DiscreteFactor
+        
         mn = MarkovNetwork()
 
         mn.add_nodes_from([V.name for V in self._varlist])
         for f in self.factors:
-            scope = [v.name for (i,v) in enumerate(self._varlist) if f.shape[i] > 1]
+            # print([(i,v) for (i,v) in enumerate(self._varlist) if f.shape[i] > 1])
+            scope, card = zip(*[(v.name, len(v)) 
+                for (i,v) in enumerate(self._varlist) if f.shape[i] > 1])
 
             mn.add_edges_from(combinations(scope,2));
-            mn.add_factors( f )
+            mn.add_factors( DiscreteFactor(scope, card, f ))
 
         # raise NotImplemented
         return mn
@@ -89,7 +96,4 @@ class FactorGraph:
         
 class ExpFam(FactorGraph):
     pass
-    
-        
-        
-            
+

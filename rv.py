@@ -12,7 +12,6 @@ class ConditionRequest(object, metaclass=utils.CopiedType):
     PARAMS = {"target", "given"}
 
 
-
 class Variable(set, metaclass=utils.CopiedType):
     PARAMS = {'name', 'default_value'}
 
