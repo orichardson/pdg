@@ -10,6 +10,7 @@ from operator import and_, mul
 
 from . import utils
 from . import rv
+Var = rv.Variable
 
 import warnings
 import itertools
@@ -54,6 +55,75 @@ try:
 except ImportError:
 	print("No torch; only numpy backend")
 
+
+
+
+def _idxs(varlist, *varis, multi=False):
+	idxs = []
+	for V in varis:
+		##old version: split doesn't work well.
+		# if V in self.varlist and (multi or V not in idxs):
+		# 	idxs.append(self.varlist.index(V))
+		# elif '×' in V.name:
+		# 	idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])
+		## new version with atomic
+		for a in V.atoms:
+			if multi or (a not in idxs):
+				idxs.append(varlist.index(a))
+		##older version
+		#     for v in V.name.split('×'):
+		#         idxs.append([v])
+
+	return idxs
+
+def broadcast(cpt, varlist, 
+		vfrom: Var = None,
+		vto: Var =None ) -> np.array:
+	""" returns its argument, but shaped
+	so that it broadcasts properly (e.g., for taking expectations) in this
+	distribution. For example, if the var list is [A, B, C, D], the cpt
+	B -> D would be broadcast to shape [1, 2, 1, 3] if |B| = 2 and |D| =3.
+
+	Parameters
+	----
+	> cpt: the argument to be broadcast; might be a dataframe, a CPT, or a np.matrix
+	> vfrom,vto: the attached variables (supply only if cpt does not have this data)
+	"""
+	if vfrom is None: vfrom = cpt.nfrom
+	if vto is None: vto = cpt.nto
+
+	# idxf = self.varlist.index(vfrom)
+	# idxt = self.varlist.index(vto)
+	#
+	# shape = [1] * len(self.varlist)
+	# shape[idxf] = len(self.varlist[idxf])
+	# shape[idxt] = len(self.varlist[idxt])
+
+	# print(vfrom, vto)
+
+	# idxf,idxt = self._idxs(vfrom), self._idxs(vto)
+	IDX = _idxs(varlist, vfrom,vto,multi=True)
+	UIDX = np.unique(IDX).tolist()
+
+	init_shape = [1] * (len(varlist)+len(IDX)-len(UIDX))
+
+	for j,i in enumerate(IDX):
+		init_shape[j] = len(varlist[i])
+
+	# print(f,'->', t,'\t',shape)
+	# assume cpd is a CPT class..
+	# but we don't necessarily want to do this in general
+
+	cpt_mat = cpt.to_numpy() if isinstance(cpt, pd.DataFrame) else cpt
+
+	# if idxt < idxf:
+	#     cpt_mat = cpt_mat.T
+
+	cpt_mat = cpt_mat.reshape(*init_shape)
+	cpt_mat = np.einsum(cpt_mat, [*IDX,...], [*UIDX, ...])
+	cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
+
+	return cpt_mat
 
 
 
@@ -191,9 +261,11 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 			state_names = {v.name : v.ordered for v in [self.nto, *self.nfrom.atoms]}
 			)
 
+	def broadcast_to(self, varlist) -> np.ndarray:
+		return broadcast(self, varlist, self.nfrom, self.nto)
 
 
-	def check_normalized(self):
+	def check_normalized(self) -> bool:
 		amt = np.where(np.all(np.isfinite(self),axis=1), (np.sum(self, axis=1)-1)**2 ,0).sum()
 		if amt > 1E-5:
 			warnings.warn("%.2f-Unnormalized CPT"%amt)
@@ -367,22 +439,7 @@ class RawJointDist(Dist):
 			raise ValueError("The queried varable", var, " is not part of this joint distribution")
 
 	def _idxs(self, *varis, multi=False):
-		idxs = []
-		for V in varis:
-			##old version: split doesn't work well.
-			# if V in self.varlist and (multi or V not in idxs):
-			# 	idxs.append(self.varlist.index(V))
-			# elif '×' in V.name:
-			# 	idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])
-			## new version with atomic
-			for a in V.atoms:
-				if multi or (a not in idxs):
-					idxs.append(self.varlist.index(a))
-			##older version
-			#     for v in V.name.split('×'):
-			#         idxs.append([v])
-
-		return idxs
+		return _idxs(self.varlist, *varis, multi=multi)
 
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		""" returns its argument, but shaped
@@ -395,42 +452,7 @@ class RawJointDist(Dist):
 		> cpt: the argument to be broadcast
 		> vfrom,vto: the attached variables (supply only if cpt does not have this data)
 		"""
-		if vfrom is None: vfrom = cpt.nfrom
-		if vto is None: vto = cpt.nto
-
-		# idxf = self.varlist.index(vfrom)
-		# idxt = self.varlist.index(vto)
-		#
-		# shape = [1] * len(self.varlist)
-		# shape[idxf] = len(self.varlist[idxf])
-		# shape[idxt] = len(self.varlist[idxt])
-
-		# print(vfrom, vto)
-
-		# idxf,idxt = self._idxs(vfrom), self._idxs(vto)
-		IDX = self._idxs(vfrom,vto,multi=True)
-		UIDX = np.unique(IDX).tolist()
-
-		init_shape = [1] * (len(self.varlist)+len(IDX)-len(UIDX))
-
-		for j,i in enumerate(IDX):
-			init_shape[j] = len(self.varlist[i])
-
-		# print(f,'->', t,'\t',shape)
-		# assume cpd is a CPT class..
-		# but we don't necessarily want to do this in general
-
-		cpt_mat = cpt.to_numpy() if isinstance(cpt, pd.DataFrame) else cpt
-
-		# if idxt < idxf:
-		#     cpt_mat = cpt_mat.T
-
-		cpt_mat = cpt_mat.reshape(*init_shape)
-		cpt_mat = np.einsum(cpt_mat, [*IDX,...], [*UIDX, ...])
-		cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
-
-		return cpt_mat
-		# return cpt_mat.reshape(*end_shape)
+		return broadcast(cpt, self.varlist, vfrom, vto)
 
 	def normalize(self):
 		self.data /= self.data.sum()

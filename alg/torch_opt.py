@@ -96,17 +96,17 @@ def torch_score(pdg, μ : RJD, γ):
 	# print('after entropy')
 	# loss -= γ * zlog( μ )
 	
-	return loss
 	# Returns log base 2 by default, so base is correct already
+	return loss
 
 def approx_score(pdg, F : FactorGraph, γ):
-	# TODO The below is very bad. Be better.
-	broadcast =pdg.genΔ(kind=RJD.unif).broadcast
+	# TODO The below is in bad shape; needs help.
+	broadcast = pdg.genΔ(kind=RJD.unif).broadcast
 	
 	loss = torch.tensor(0.)
 	for X,Y,cpd_df,α,β in pdg.edges("XYPαβ"):
 		# muxy = μ.prob_matrix(X, Y)
-		muxy = F.gibbs_marginal_estimate([X,Y])
+		muxy = F.gibbs_marginal_estimate([X,Y]) # TODO this is not implememnted
 		# muy_x = μ.prob_matrix(Y | X)
 		muy_x = muxy / muxy.sum(axis= pdg.varlist.index(X)) # TODO be more efficient.
 
@@ -144,9 +144,8 @@ def approx_score(pdg, F : FactorGraph, γ):
 	return loss
 
 
-
-def _torch_opt_inc(pdg, gamma=None,    
-		extraTemp = 1E-3, iters=350, 
+def opt_dist(pdg, gamma=None,
+		extraTemp = 1E-3, iters=350,
 		ret_losses:bool = False,
 		ret_iterates:bool = False,
 		representation:str = 'simplex', # or dist or softmax
@@ -155,7 +154,7 @@ def _torch_opt_inc(pdg, gamma=None,
 		optimizer = 'Adam',
 		**optim_kwargs
 		#, tol = 1E-8, max_iters=300 #unsupported
-		):
+	):
 	""" = min_\mu inc(\mu, gamma) """
 	optimizer = optimizer.lower()
 	

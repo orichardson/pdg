@@ -1099,18 +1099,26 @@ class PDG:
 			pdg += CPT.from_pgmpy(cpd)
 
 		return pdg
+    
+
+	@staticmethod
+	def from_FG( fg : FactorGraph ):
+		pdg = PDG()
+
+		# TODO
+		raise NotImplemented
+		return pdg;
 
 
 
 	def to_FG(self, via='β') -> FactorGraph:
 		"""
-		TODO: refactor so that I don't need to create a full RJD to do broadasting.
 		"""
-		broadcast = self.genΔ().broadcast
 		factors = []
 		for X,Y,cpt,power in self.edges("XYP"+via):
 			if cpt is not None:
-				factors.append(np.nan_to_num( broadcast(cpt) ** power, nan=1))
+				factors.append(np.nan_to_num(
+						cpt.broadcast_to(self.varlist) ** power, nan=1))
 		
 		return FactorGraph(factors, self.varlist)
 	
