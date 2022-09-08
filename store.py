@@ -53,10 +53,11 @@ class Selector:
         
 
 class TensorLibrary:
-    def __init__(self, shape=(-1,), decoder=None):
+    def __init__(self, shape=(-1,), decoder=None, encoder=None):
         # self.tensordata = dists
         self.ushape = shape
         self.decoder = decoder
+        self.encoder = encoder
         self.tensordata = {} # frozenset( str | (k:v) )  =>  ℝ(ushape)    
         # self.ushape = M.genΔ(repr=store_repr).data.reshape(shape).shape
 
@@ -65,6 +66,9 @@ class TensorLibrary:
         # if name[0] == '_':
             # pass
         # return View(self).__getattr__(name)
+    
+    def __setattr__(self, name, val):
+        self.tensordata[name] = self._enc(val)
         
     # def __iadd__(self, other):
         # pass
@@ -100,8 +104,17 @@ class TensorLibrary:
         else:
             return stored_tensor
 
+    def _enc(self, value):
+        if self.encoder:
+            return self.encoder(value)
+        else:
+            return value
+
     def __setitem__(self, key, val):
         self.tensordata[fz(key)] = self._validate(val)
+
+    def __getitem__(self, key):
+        return self._dec(self.tensordata[fz(key)])
         
     def copy(self):
         tl = TensorLibrary(self.shape, self.decoder)
@@ -110,8 +123,9 @@ class TensorLibrary:
         
     # def j
     #TODO: niciefy this
-    # def __repr__(self):
-    #     return "<DistLib with keys {%s}>"%s
+    def __repr__(self):
+        return "<DistLib with keys {%s}>"%s
+
     def __iter__(self):
         return iter(LView(self))
 
@@ -132,6 +146,9 @@ class LView:
         self._most_recent_tag = selector[-1] if len(selector) > 0 else None
         self._filters = kwselect.get('_filters', [])
         self._sel  = fz(*selector, **kwselect)
+
+        ## this could be a bad idea; we're making lots of copies (or references?) for no reason.
+        # Also, have to update the cache. 
         self._cached = list(self._consist_from_lib())
 
 
@@ -332,8 +349,9 @@ class LView:
             
 
     def __getattr__(self, name):
-        if frozenset([*self._sel, name]) in self._lib.tensordata:
-            return self._lib._decode(self._lib.tensordata[name])
+        key = frozenset([*self._sel, name])
+        if key in self._lib.tensordata:
+            return self._lib._decode(self._lib.tensordata[key])
 
         if name[0] == '_':
             raise AttributeError

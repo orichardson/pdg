@@ -460,10 +460,10 @@ class PDG:
 	def _idxs(self, *varis, multi=False):
 		idxs = []
 		for V in varis:
-			if V in self.varlist and (multi or V not in idxs):
-				idxs.append(self.varlist.index(V))
-			elif '×' in V.name:
-				idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])        
+			for a in V.atoms:
+				i = self.varlist.index(a)
+				if multi or (i not in idxs):
+					idxs.append(i)
 		return idxs
 
 	def edges(self, fmt='XY'):
@@ -534,7 +534,8 @@ class PDG:
 
 		Z = d.data.sum()
 		d.data /= Z
-		return (d,Z*d.data.size) if return_Z else d
+		Z *= d.data.size
+		return (d,Z) if return_Z else d
 	
 	
 
@@ -1099,7 +1100,7 @@ class PDG:
 			pdg += CPT.from_pgmpy(cpd)
 
 		return pdg
-    
+	
 
 	@staticmethod
 	def from_FG( fg : FactorGraph ):
@@ -1117,10 +1118,39 @@ class PDG:
 		factors = []
 		for X,Y,cpt,power in self.edges("XYP"+via):
 			if cpt is not None:
+				br = cpt.broadcast_to(self.varlist)
 				factors.append(np.nan_to_num(
 						cpt.broadcast_to(self.varlist) ** power, nan=1))
 		
 		return FactorGraph(factors, self.varlist)
 	
 	def to_markov_net(self, via='β'):
-		return self.to_FG(via).to_pgmpy_markov_net()
+		## This would be easiest but unfortunately doesn't always work
+		## for a stupid reason: numpy arrays can only have 32 dimensions.
+		# return self.to_FG(via).to_pgmpy_markov_net();
+		## ... so instead,
+		
+		from pgmpy.models import MarkovNetwork
+		from pgmpy.factors.discrete import DiscreteFactor
+		from itertools import combinations
+		
+		mn = MarkovNetwork()
+		mn.add_nodes_from([V.name for V in self.varlist])
+
+		for L,X,Y,cpt,power in self.edges("LXYP"+via):
+			# scope, card = zip(*[(v.name, len(v)) 
+			# 	for (i,v) in enumerate(self._varlist) if f.shape[i] > 1])
+			
+			# don't need these extra coherence edges ...
+			if L[0] == 'π': #  (it's a projection)
+				continue 
+
+			scope, card = zip(*[(v.name, len(v)) for v in (X&Y).atoms])
+			
+			# print(X.name, Y.name)
+
+			mn.add_edges_from(combinations(scope,2));
+			mn.add_factors( DiscreteFactor(scope, card, cpt.to_numpy() ** power ))
+
+		# raise NotImplemented
+		return mn

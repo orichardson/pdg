@@ -68,8 +68,9 @@ def _idxs(varlist, *varis, multi=False):
 		# 	idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])
 		## new version with atomic
 		for a in V.atoms:
-			if multi or (a not in idxs):
-				idxs.append(varlist.index(a))
+			i = varlist.index(a)
+			if multi or (i not in idxs):
+				idxs.append(i)
 		##older version
 		#     for v in V.name.split('×'):
 		#         idxs.append([v])

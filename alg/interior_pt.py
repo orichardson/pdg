@@ -4,12 +4,13 @@ from ..dist import RawJointDist as RJD
 
 import cvxpy as cp
 from cvxpy.constraints.exponential import ExpCone
+
+import networkx as nx
 import numpy as np
 
 from collections.abc import Iterable
 from collections import namedtuple
-import itertools
-
+import itertools 
 from operator import mul
 from functools import reduce
 
@@ -45,14 +46,29 @@ def marginalize(mu, shape, IDXs):
 		# preallocate list of the appropriate size. Will eventually hold 
 		# scalar cp.expressions, which I will aggregate with cp.bmat
 	## will be converted to a cp.expression by operator overloading after addition.
+		
+	# print(shape,IDXs,end='\n',flush=True)
+	##
+	
+	print('\tmarginalizing : ', mu.size, shape, IDXs)
+	II = np.arange(mu.size)
+	v_idx = np.unravel_index(II, shape)
+	idx = np.ravel_multi_index(tuple(v_idx[j] for j in IDXs), postshape)
 
-	for i, mui in enumerate(mu):
-		v_idx = np.unravel_index(i, shape)  # virtual index
-		# print('FLAT: ', i, '\t VIRTUAL: ', v_idx, '\t in shape ', shape)
-		idx = np.ravel_multi_index(tuple(v_idx[j] for j in IDXs), postshape)
-		# print('  |=> post.virtual = ', tuple(v_idx[j] for j in IDXs), '\t in shape', postshape)
-		# print('  |=> flat.idx = ', idx)
-		elts[idx] = elts[idx] + mui
+	# print('\n\t',end='')
+	for i in range(len(elts)):
+		print('\t[%d / %d] components' % (i,len(elts)),end='\r' if i < len(elts)-1 else '\n',flush=True)
+		idxs_i = np.nonzero((idx==i))
+		elts[i] = cp.sum(mu[idxs_i])
+	
+	# scalar cp.expressions, which I will aggregate with cp.bmat
+	# for i, mui in enumerate(mu):
+	# 	v_idx = np.unravel_index(i, shape)  # virtual index
+	# 	# print('FLAT: ', i, '\t VIRTUAL: ', v_idx, '\t in shape ', shape)
+	# 	idx = np.ravel_multi_index(tuple(v_idx[j] for j in IDXs), postshape)
+	# 	# print('  |=> post.virtual = ', tuple(v_idx[j] for j in IDXs), '\t in shape', postshape)
+	# 	# print('  |=> flat.idx = ', idx)
+	# 	elts[idx] = elts[idx] + mui
 
 	return cp.hstack(elts)
 
@@ -139,21 +155,53 @@ def cvx_opt_joint( M : PDG,  also_idef=True) :
 
 
 # like cvx_opt_joint, but in parallel over all clusters, with consistency constraints
-def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs) :
+def cvx_opt_clusters( M, also_idef=True, 
+		varname_clusters = None, cluster_edges = None,
+		dry_run=False, **solver_kwargs) :
 	if(varname_clusters == None):
 		print("no clusters given; using pgmpy junction tree to find some.")
-		varname_clusters = [V for V in jtree_clusters(M)]
+
+		jtree = M.to_markov_net().to_junction_tree()
+		varname_clusters = list(jtree.nodes())
+		cluster_edges = list(jtree.edges())
+
 		print("FOUND: ",varname_clusters)
 
 	Cs = varname_clusters
+	cluster_shapes = [tuple(len(M.vars[Vn]) for Vn in C) for C in Cs]
 	m = len(varname_clusters)
+
+	if cluster_edges == None:
+		complete_graph = nx.Graph()
+		for i in range(m):
+			for j in range(i+1,m):
+				common = set(Cs[i]) & set(Cs[j])
+				num_sepset_params = np.prod([len(M.vars[X]) for X in common])
+
+				complete_graph.add_edge(Cs[i], Cs[j], weight=-len(common))
+				# complete_graph.add_edge(Cs[i], Cs[j], weight=-num_sepset_params)
+				# complete_graph.add_edge(i, j, weight=-num_sepset_params)
+		
+		cluster_edges = nx.minimum_spanning_tree(complete_graph).edges()
+
+	## Now, we have to make sure that the "running intersection property" (?) 
+	# is satisifed. We can't have a cluster tree
+	#  (ab)  -- (d) -- (ac)   
+	# because the middle node doesn't have a, so we wouldn't enforce marginal constraints
+	# properly, were we to only look along edges. So formally, we require that, for every
+	# clusters i and j, we have C_i \cap C_j must be contained in every node in the unique
+	# path from C_i to C_j in the cluster tree.
 	
 	edgemap = {} # label -> cluster index
 	# var_clusters = []
-	cluster_shapes = [tuple(len(M.vars[Vn]) for Vn in C) for C in Cs]
+    
 	
+	sorted_clusters = sorted(enumerate(Cs), key=lambda iC: np.prod(cluster_shapes[iC[0]]))
+	print(sorted_clusters)
+
 	for L, X, Y in M.edges("l,X,Y"):
-		for i,cluster in enumerate(Cs):
+		# for i,cluster in enumerate(Cs):
+		for i,cluster in sorted_clusters:
 			atoms = (X & Y).atoms
 			# if all((N.name in cluster or N.is1) for N in atoms):
 			if all((N.name in cluster) for N in atoms):
@@ -167,46 +215,66 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 	ts = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
 	
 	tol_constraints = []
+	k = 0
 	for L,X,Y,p in M.edges("l,X,Y,P"):
 		if 'π' not in L:
+			k += 1
+			print("[%d] adding constr "%k, L, ': ', X.name , '->',Y.name, end='\n',flush=True)
+
 			i = edgemap[L]
+			# print(L, i, X.name, Y.name)
 			C = varname_clusters[i]            
 			
 			idxs_XY = [C.index(N.name) for N in (X&Y).atoms]
 			idxs_X = [C.index(N.name) for N in X.atoms]
 			
+			print('\tabout to marginalize', end='\n',flush=True)
+			xymarginal = marginalize(mus[i], cluster_shapes[i], idxs_XY)
+			print('\tabout to construct expcone', end='\n',flush=True)
+			print('\tmus[i].shape ', mus[i].shape, end='\n',flush=True)
 			expcone = cp.constraints.exponential.ExpCone(-ts[L], 
 			#    mus[i].T @ mk_projector(cluster_shapes[i], idxs_XY), 
-			   marginalize(mus[i], cluster_shapes[i], idxs_XY), 
+			   xymarginal, 
 			#    cp.vec(cpd2joint(p, mus[i].T @ mk_projector(cluster_shapes[i], idxs_X)) )) 
 			   cp.vec(cpd2joint(p,marginalize(mus[i], cluster_shapes[i], idxs_X)) )) 
-# 
-
+			print('\texpcone constructed', end='\n',flush=True)
 			tol_constraints.append(expcone)
+
+			if dry_run:
+				break
 
 	local_marg_constraints = []
 	
-	for i in range(m):
-		for j in range(m):
-			common = set(Cs[i]) & set(Cs[j])
-			if len(common) > 0 and i != j:
-				i_idxs = [k for k,vn in enumerate(Cs[i]) if vn in common]
-				j_idxs = [k for k,vn in enumerate(Cs[j]) if vn in common]
-				# ishareproj = mk_projector(cluster_shapes[i], i_idxs)
-				# jshareproj = mk_projector(cluster_shapes[j], j_idxs)
-				
-				marg_constraint = marginalize(mus[i], cluster_shapes[i], i_idxs)\
-						== marginalize(mus[j], cluster_shapes[j], j_idxs)
-				local_marg_constraints.append(marg_constraint)
+	# for i in range(m):
+	# 	for j in range(i+1,m):
+	for Ci, Cj in cluster_edges:
+		# common = set(Cs[i]) & set(Cs[j])
+		print(Ci,Cj)
+		common = set(Ci) & set(Cj)
+		if len(common) > 0:
+			i, j = Cs.index(Ci), Cs.index(Cj)
+			print("adding common constr between (",i,",",j,') : ', common,flush=True)
+
+			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
+			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
+			# ishareproj = mk_projector(cluster_shapes[i], i_idxs)
+			# jshareproj = mk_projector(cluster_shapes[j], j_idxs)
+			
+			marg_constraint = marginalize(mus[i], cluster_shapes[i], i_idxs)\
+					== marginalize(mus[j], cluster_shapes[j], j_idxs)
+			local_marg_constraints.append(marg_constraint)
 	
 	prob = cp.Problem( 
 		cp.Minimize( sum(βL * sum(ts[L]) for βL,L in M.edges("β,l") if 'π' not in L) ),
 			[sum(mus[i]) == 1 for i in range(m)]
 			+ [mus[i] >= 0 for i in range(m)]
 			+ tol_constraints + local_marg_constraints )
+
+	if dry_run:
+		return prob
+
 	prob.solve(**solver_kwargs)    
 	
-	print(prob.value)
 	fp = None
 	if also_idef:
 		# hmmm do we need to use Bethe entropy? Or Kikuchi approximations? Might not be cvx....
@@ -218,7 +286,7 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 
 		cpds = {}
 		cm_constraints = []
-		for L,X,Y in M.edges("l,X,Y"):
+		for L,X,Y,p in M.edges("l,X,Y,P"):
 			if 'π' not in L:
 				i = edgemap[L]
 				C = Cs[i]
@@ -229,6 +297,13 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 
 				cpd = old_cluster_rjds[edgemap[L]].conditional_marginal(Y|X)
 				cpds[L] = cpd
+				print("Pr(", Y, "|", X ,")")
+				print()
+				print(cpd)
+				print(p)
+				print()
+				print(old_cluster_rjds[edgemap[L]][X,Y])
+				print()
 
 				cm_constraints.append(
 					marginalize(mus[i], sh, idxs_XY)
@@ -241,13 +316,20 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 		tol_constraints = []
 				
 		for i in range(m):
-			fp = np.prod( [1]+[old_cluster_rjds[i].prob_matrix(Y|X) **α 
-				for X,Y,L,α in M.edges("X,Y,L,α") if edgemap[L] == i] )
+			# fp = np.prod( [np.ones(cluster_shapes[i])]+[old_cluster_rjds[i].prob_matrix(Y|X) **α 
+			# 	for X,Y,L,α in M.edges("X,Y,L,α") if edgemap[L] == i] )
+			fp = reduce(mul, 
+				[np.ones(cluster_shapes[i])]+
+				[old_cluster_rjds[i].prob_matrix(Y|X) **α 
+					for X,Y,L,α in M.edges("X,Y,L,α") if edgemap[L] == i] 
+			)
 
 			correction_elts = [1] * mus[i].size
 			for j in range(m):
 				# if i != j: # for use with square roots
-				if i < j: # only single-count corrections?
+				# if i < j: # only single-count corrections?
+				if i < j \
+						and ((Cs[i],Cs[j]) in cluster_edges or (Cs[j], Cs[i]) in cluster_edges):
 					common = set(Cs[i]) & set(Cs[j])
 					idxs = [k for k,vn in enumerate(Cs[i]) if vn in common]
 					if len(common) > 0:
@@ -257,7 +339,7 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 						# want correction *= new_term, but no broadcasting b/c indices lost
 						# ... sooo instead ....
 						
-						#0. pre-compute the shape of the shared sepset 
+						#(a.0) pre-compute the shape of the shared sepset 
 						newterm_vshape = tuple(cluster_shapes[i][k] for k in idxs)
 						for w,mu_w in enumerate(mus[i]):
 							#1. unravel the joint cluster i's world w into a value for each variable
@@ -266,8 +348,27 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 							# marginal probability (new_term) should be. 
 							idx = np.ravel_multi_index(tuple(v_idx[j] for j in idxs), newterm_vshape)
 							correction_elts[w] *= new_term[idx]
+						# (b.0) prepcompute the shape of shared subset
+						# newterm_vshape = tuple(cluster_shapes[i][k] for k in idxs)
+						# II  = np.arange(mus[i].size)
+						# v_idx = np.unravel_index(II , cluster_shapes[i])
+						# idx = np.ravel_multi_index(tuple(v_idx[k] for k in idxs), newterm_vshape)
+						# correction_elts
+
+						## the below is taken from marginalize for context.
+						# II = np.arange(mu.size)
+						# v_idx = np.unravel_index(II, shape)
+						# idx = np.ravel_multi_index(tuple(v_idx[j] for j in IDXs), postshape)
+						# # print('\n\t',end='')
+						# for i in range(len(elts)):
+						# 	print('\t[%d / %d] components' % (i,len(elts)),end='\r',flush=True)
+						# 	idxs_i = np.nonzero((idx==i))
+						# 	elts[i] = cp.sum(mu[idxs_i])
 
 			correction = cp.hstack(correction_elts)
+			print(Cs[i], cluster_shapes[i])
+			print('correction shape: ', correction.shape)
+			print('fp.shape: ', fp.shape)
 			
 			tol_constraints.append(ExpCone(
 				-tts[i],
@@ -298,5 +399,5 @@ def cvx_opt_clusters( M, varname_clusters=None,  also_idef=True, **solver_kwargs
 		value=prob.value)
 
 
-def jtree_clusters(M : PDG):
-	return M.to_markov_net().to_junction_tree().nodes();
+# def jtree_clusters(M : PDG):
+# 	return M.to_markov_net().to_junction_tree().nodes();
