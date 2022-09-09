@@ -1112,11 +1112,14 @@ class PDG:
 
 
 
-	def to_FG(self, via='β') -> FactorGraph:
+	def to_FG(self, via='β', drop_joints=False) -> FactorGraph:
 		"""
 		"""
 		factors = []
-		for X,Y,cpt,power in self.edges("XYP"+via):
+		for L,X,Y,cpt,power in self.edges("LXYP"+via):
+			if drop_joints and L[0] == 'π':
+				continue
+			
 			if cpt is not None:
 				br = cpt.broadcast_to(self.varlist)
 				factors.append(np.nan_to_num(

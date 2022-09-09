@@ -52,6 +52,14 @@ class FactorGraph:
     def Z(self):
         """ warning: scales exponentially !"""
         return reduce(mul, self.factors).sum()
+
+    def scope_card(self, f, names=True):
+        return zip(*[(v.name if names else v, len(v)) 
+                for (i,v) in enumerate(self._varlist) if f.shape[i] > 1])
+    
+    def scope(self, f, names=True):
+        scope, _ = self.scope_card(f,names)
+        return list(scope)
         
     
     # def neighbors(vars):

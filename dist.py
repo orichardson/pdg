@@ -68,7 +68,11 @@ def _idxs(varlist, *varis, multi=False):
 		# 	idxs.extend([v for v in self._idxs(*V.split()) if (multi or v not in idxs)])
 		## new version with atomic
 		for a in V.atoms:
-			i = varlist.index(a)
+			try:
+				i = varlist.index(a)
+			except:
+				print("varlist: ", varlist)
+				raise
 			if multi or (i not in idxs):
 				idxs.append(i)
 		##older version
@@ -246,9 +250,11 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 	def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD, **kwargs):
 		tgt = rv.Variable(tcpd.state_names[tcpd.variable], 
 			name=tcpd.variable)
-		if len(tcpd.get_evidence()) > 0 :
+		srcnames = tcpd.variables[1:] ## !!! note that get_cardinality() reverses ...
+			# the order of the vaiables (so they don't line up with values) for no reason!
+		if len(srcnames) > 0 :
 			src = reduce(and_, [rv.Variable(tcpd.state_names[l], name=l) 
-				for l in tcpd.get_evidence() if l != tgt.name])
+				for l in srcnames if l != tgt.name])
 		else: src = rv.Unit
 
 		return cls.from_matrix(src, tgt, 
