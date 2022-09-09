@@ -1,6 +1,4 @@
 
-from msvcrt import open_osfhandle
-from termios import CS6
 from ..pdg import PDG
 from ..dist import RawJointDist as RJD
 
@@ -52,14 +50,14 @@ def marginalize(mu, shape, IDXs):
 	# print(shape,IDXs,end='\n',flush=True)
 	##
 	
-	print('\tmarginalizing : ', mu.size, shape, IDXs)
+	# print('\tmarginalizing : ', mu.size, shape, IDXs)
 	II = np.arange(mu.size)
 	v_idx = np.unravel_index(II, shape)
 	idx = np.ravel_multi_index(tuple(v_idx[j] for j in IDXs), postshape)
 
 	# print('\n\t',end='')
 	for i in range(len(elts)):
-		print('\t[%d / %d] components' % (i,len(elts)),end='\r' if i < len(elts)-1 else '\n',flush=True)
+		# print('\t[%d / %d] components' % (i,len(elts)),end='\r' if i < len(elts)-1 else '\n',flush=True)
 		idxs_i = np.nonzero((idx==i))
 		elts[i] = cp.sum(mu[idxs_i])
 	
@@ -195,7 +193,7 @@ def cvx_opt_clusters( M, also_idef=True,
 	
 	edgemap = {} # label -> cluster index
 	# var_clusters = []
-    
+	
 	
 	sorted_clusters = sorted(enumerate(Cs), key=lambda iC: np.prod(cluster_shapes[iC[0]]))
 	print(sorted_clusters)
@@ -220,7 +218,7 @@ def cvx_opt_clusters( M, also_idef=True,
 	for L,X,Y,p in M.edges("l,X,Y,P"):
 		if 'π' not in L:
 			k += 1
-			print("[%d] adding constr "%k, L, ': ', X.name , '->',Y.name, end='\n',flush=True)
+			# print("[%d] adding constr "%k, L, ': ', X.name , '->',Y.name, end='\n',flush=True)
 
 			i = edgemap[L]
 			# print(L, i, X.name, Y.name)
@@ -229,16 +227,16 @@ def cvx_opt_clusters( M, also_idef=True,
 			idxs_XY = [C.index(N.name) for N in (X&Y).atoms]
 			idxs_X = [C.index(N.name) for N in X.atoms]
 			
-			print('\tabout to marginalize', end='\n',flush=True)
+			# print('\tabout to marginalize', end='\n',flush=True)
 			xymarginal = marginalize(mus[i], cluster_shapes[i], idxs_XY)
-			print('\tabout to construct expcone', end='\n',flush=True)
-			print('\tmus[i].shape ', mus[i].shape, end='\n',flush=True)
+			# print('\tabout to construct expcone', end='\n',flush=True)
+			# print('\tmus[i].shape ', mus[i].shape, end='\n',flush=True)
 			expcone = cp.constraints.exponential.ExpCone(-ts[L], 
 			#    mus[i].T @ mk_projector(cluster_shapes[i], idxs_XY), 
 			   xymarginal, 
 			#    cp.vec(cpd2joint(p, mus[i].T @ mk_projector(cluster_shapes[i], idxs_X)) )) 
 			   cp.vec(cpd2joint(p,marginalize(mus[i], cluster_shapes[i], idxs_X)) )) 
-			print('\texpcone constructed', end='\n',flush=True)
+			# print('\texpcone constructed', end='\n',flush=True)
 			tol_constraints.append(expcone)
 
 			if dry_run:
@@ -254,7 +252,7 @@ def cvx_opt_clusters( M, also_idef=True,
 		common = set(Ci) & set(Cj)
 		if len(common) > 0:
 			i, j = Cs.index(Ci), Cs.index(Cj)
-			print("adding common constr between (",i,",",j,') : ', common,flush=True)
+			# print("adding common constr between (",i,",",j,') : ', common,flush=True)
 
 			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
 			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
@@ -321,8 +319,8 @@ def cvx_opt_clusters( M, also_idef=True,
 		# and to keep the program convex, we need at most one per cluster. 
 		# So. First we find a root, which doesn't get such a term,
 		# and then apply the appropriate correction term as we traverse the tree.
-		print(Cs)
-		print(m, 'cluster; \t edges: ', cluster_edges)
+		# print(Cs)
+		# print(m, 'cluster; \t edges: ', cluster_edges)
 		Gr = nx.Graph(cluster_edges).to_directed()
 		Gr.add_nodes_from(Cs)
 		nx.set_edge_attributes(Gr, 
@@ -350,7 +348,7 @@ def cvx_opt_clusters( M, also_idef=True,
 				# if i < j \
 				# 		and ((Cs[i],Cs[j]) in cluster_edges or (Cs[j], Cs[i]) in cluster_edges):
 				if (Cs[j], Cs[i]) in ab.edges():
-					print("Correction along edge (%d-%d)"%(i,j))
+					# print("Correction along edge (%d-%d)"%(i,j))
 					common = set(Cs[i]) & set(Cs[j])
 					idxs = [k for k,vn in enumerate(Cs[i]) if vn in common]
 					if len(common) > 0:
@@ -387,11 +385,11 @@ def cvx_opt_clusters( M, also_idef=True,
 						# 	elts[i] = cp.sum(mu[idxs_i])
 
 			correction = cp.hstack(correction_elts)
-			print(Cs[i], cluster_shapes[i])
-			print('correction shape: ', correction.shape)
-			print(correction.is_dcp())
-			print(correction.is_affine())
-			print('fp.shape: ', fp.shape)
+			# print(Cs[i], cluster_shapes[i])
+			# print('correction shape: ', correction.shape)
+			# print(correction.is_dcp())
+			# print(correction.is_affine())
+			# print('fp.shape: ', fp.shape)
 			
 			tol_constraints.append(ExpCone(
 				-tts[i],
@@ -425,50 +423,126 @@ def cvx_opt_clusters( M, also_idef=True,
 # def jtree_clusters(M : PDG):
 # 	return M.to_markov_net().to_junction_tree().nodes();[ ]
 
-def cvx_opt_qq_joint(M, gamma=1, **solver_kwargs): 
+def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs): 
 	"""both the qualitative, and the quantitative terms together""" 
-    
-	raise NotImplemted
+	
+	# raise NotImplemented
 
 	n = np.prod(M.dshape)
 	mu = cp.Variable(n, nonneg=True)
-	tb = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
-	ta = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
+	# t = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
 	# t = { L : cp.Variable(n) for L in M.edges("l") if 'π' not in L }
+	t = {}
+	s = {}
+
+	def mu_marg(*varis):
+		return marginalize(mu, M.dshape, M._idxs(*varis))
 	
-	beta_tol_constraints = [
-		ExpCone(-tb[L], 
-			#    mu.T @ mk_projector(M.dshape, M._idxs(X,Y)), 
-			   marginalize(mu, M.dshape, M._idxs(X,Y)),
-			   cp.vec(cpd2joint(p, marginalize(mu, M.dshape, M._idxs(X))) ))
-			#    cp.vec(cpd2joint(p, mu.T @ mk_projector(M.dshape, M._idxs(X))) )) 
-			for L,X,Y,p in M.edges("l,X,Y,P") if 'π' not in L
-	]
+
+	cvx_tol_constraints = []
+	cave_edges = []
+
+	for L,X,Y,α,β,p in M.edges("l,X,Y,α,β,P"):
+		if 'π' in L: continue
+
+		sL = (β - gamma * α)
+
+		if sL > 0: # this part is convex
+			t[L] = cp.Variable(p.to_numpy().size)
+			cone = ExpCone(-t[L], 
+				#    mu.T @ mk_projector(M.dshape, M._idxs(X,Y)), 
+					# marginalize(mu, M.dshape, M._idxs(X,Y)),
+					mu_marg(X,Y),
+				#    cp.vec(cpd2joint(p, marginalize(mu, M.dshape, M._idxs(X))) ))
+					cp.vec(n_copies(mu_marg(X), len(Y)))
+				#    cp.vec(cpd2joint(p, mu.T @ mk_projector(M.dshape, M._idxs(X))) )) 
+			) 
+			s[L] = sL
+			cvx_tol_constraints.append(cone)
+
+		else: # this part is concave
+			cave_edges.append((L,X,Y,sL))
 
 
-	## TODO VET ME
-	alpha_tol_constraints = [
-		ExpCone(-ta[L], 
-			#    mu.T @ mk_projector(M.dshape, M._idxs(X,Y)), 
-				marginalize(mu, M.dshape, M._idxs(X,Y)),
-                ### TODO FIXME <<<<~!!!
-				cp.vec(cpd2joint(np.ones(...), marginalize(mu, M.dshape, M._idxs(X))) ))
-			for L,X,Y,p in M.edges("l,X,Y,P") if 'π' not in L
-	]
+	def g(muar) : # concave part
+		return sum(
+			np.sum(sL * muar * ( np.log( mu_marg(X,Y) ) 
+			           - np.log( cp.vec(n_copies(mu_marg(X), len(Y))) )) )
+			for L,X,Y,sL in cave_edges
+		)
 
+	def grad_g(mu):
+		return sum(
+			sL * ( np.log( mu_marg(X,Y) ) 
+			           - np.log( cp.vec(n_copies(mu_marg(X), len(Y))) )) 
+			for L,X,Y,sL in cave_edges
+		) - g(mu)
+
+
+	logprobs = sum(
+		- β * cp.multiply( np.log(p).to_numpy().reshape(-1), mu_marg(X,Y))
+		for L,X,Y,β,p in M.edges("l,X,Y,β,P")  if 'π' not in L
+	)
+
+	### ---  MANUAL VERSION  ---
+	for it in range(max_iters):
+		if mu.value == None:
+			prob.solve()
+		
+		frozen = mu.value
+
+		linearized = cp.sum(
+			cp.multiply((mu-frozen), grad_g(frozen))
+		)
+
+		prob = cp.Problem( 
+			cp.Minimize( 
+				logprobs + linearized + 
+				sum( s[L] * sum(t[L]) for L,tL in t.items() ) 
+				# TODO + entropy
+			),
+			cvx_tol_constraints + [sum(mu) == 1] 
+		)
+
+		prob.solve()
+		print(prob.value)
+
+
+			
+	prob.solve(method='dccp', **solver_kwargs) 
+	# prob.solve(**solver_kwargs)
+
+
+	return RJD(mu.value, M.varlist)
+
+
+def _cvx_opt_direct(M, gamma=1, **solver_kwargs):
+	"""
+	DO NOT USE!  Will Raise Exception: Problem is not DCCP. 
+	"""
+	n = np.prod(M.dshape)
+	mu = cp.Variable(n, nonneg=True)
+	objective = 0
 	
-	prob = cp.Problem( 
-		cp.Minimize( 
-			sum(βL * sum(tb[L]) for βL,L in M.edges("β,l") if 'π' not in L) 
-			+ sum(αL * sum(tα[L]) for αL,L in M.edges("α,l") if 'π' not in L) ),
-		[sum(mu) == 1] 
-			+ beta_tol_constraints + alpha_tol_constraints
+	for L,β,α,X,Y,p in M.edges("l,β,α,X,Y,P"):
+		if 'π' not in L:
+			muXY = marginalize(mu, M.dshape, M._idxs(X,Y))
+			muX = marginalize(mu, M.dshape, M._idxs(X))	
+			## next calculation might be buggy..
+			muX_broadcast2XY = cp.vec(n_copies(muX, len(Y)) )
+			muXpY_X = cp.vec(cpd2joint(p, muX))
+			print(muXY.shape, muX.shape, muX_broadcast2XY.shape, muXpY_X.shape, 
+			cp.log(muXY).shape, cp.log(muXpY_X).shape)
+			print((cp.log(muXY) - cp.log(muXpY_X)).shape)
+			print( muXY.shape )
+
+			objective += β * cp.sum( cp.multiply(muXY,  cp.log(muXY) - cp.log(muXpY_X) ) )
+			objective -= α * cp.sum( cp.multiply(muXY, cp.log(muXY) - cp.log(muX_broadcast2XY)))
+
+	prob = cp.Problem(
+		cp.Minimize( objective),
+		[sum(mu) == 1, mu >= 0]
 	)
 	prob.solve(**solver_kwargs) 
-
-
-	## save problem, etc as properties of method so you can get them afterwards.
-	cvx_opt_joint.prob = prob
-	cvx_opt_joint.t = t
-	
 	return RJD(mu.value, M.varlist)
+
