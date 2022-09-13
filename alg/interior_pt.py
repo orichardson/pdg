@@ -77,6 +77,52 @@ def cpd2joint(cpt, mu_X):
 	# print("P shape: ", P.shape, "\t μ_X shape : ", mu_X.shape)
 	return cp.vstack([ P[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
 
+def cpd2joint_np(cpt, mu_X):
+	P = cpt
+	# print("P shape: ", P.shape, "\t μ_X shape : ", mu_X.shape)
+	return cp.vstack([ P[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
+
+def combine_iters(it1, it2, sel): 
+	i1 = iter(it1)
+	i2 = iter(it2)
+	for s in sel: 
+		if s: yield next(i1) 
+		else: yield next(i2)
+
+def dup2shape(cvxpy_expr, shape, idxs):
+	"""takes a cvxpy expression `cvxpy_expr` representing flattened marginals along dimensions `idxs` in
+	the context of a joint n-dimensional array of shape `shape`, and
+	:returns: a version of cvxpy_expr suitable for element-wise multiplication, i.e., of that same joint shape."""
+	n = np.prod(shape)
+	expr_vshape = tuple(shape[i] for i in idxs)
+	m = np.prod(expr_vshape)
+
+	assert m == cvxpy_expr.size, "indices " + str(tuple(shape[i] for i in idxs)) + \
+		" not compatible with expression of size "+ str(cvxpy_expr.size)
+
+	unwound = list(cvxpy_expr)
+	
+	# not_idx = tuple(i for i in range(len(shape)) if i not in idxs)
+	not_shape = tuple(shape[i] for i in range(len(shape)) if i not in idxs)
+
+	expr_coords = np.unravel_index(np.arange(m), expr_vshape)
+	to_ret = np.zeros(shape, dtype='object')
+	
+
+	# prematurely "optimized" because I didn't want to iterate
+	# through everything
+	for non_coords in np.ndindex(*not_shape):
+		full_coords = tuple(combine_iters(
+			expr_coords,
+			non_coords, 
+			[i in idxs for i in range(len(shape))]
+		))
+		flat_full_coords = np.ravel_multi_index(full_coords, shape)
+		np.put(to_ret, flat_full_coords, unwound)
+
+	# put everything back together. Better than iterating? Who knows...
+	return cp.hstack(to_ret.reshape(-1))
+
 def n_copies( mu_X, n ):
 	""" an analogue of cpd2joint, which just does broadcasting, 
 		effectively with a "cpd" that is constant ones. """
@@ -154,7 +200,7 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 	return RJD(mu.value, M.varlist)
 
 # like cvx_opt_joint, but in parallel over all clusters, with consistency constraints
-def cvx_opt_clusters( M, also_idef=True, 
+def cvx_opt_clusters( M : PDG, also_idef=True, 
 		varname_clusters = None, cluster_edges = None,
 		dry_run=False, **solver_kwargs) :
 	if(varname_clusters == None):
@@ -425,15 +471,13 @@ def cvx_opt_clusters( M, also_idef=True,
 
 def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs): 
 	"""both the qualitative, and the quantitative terms together""" 
-	
-	# raise NotImplemented
-
 	n = np.prod(M.dshape)
 	mu = cp.Variable(n, nonneg=True)
-	# t = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
-	# t = { L : cp.Variable(n) for L in M.edges("l") if 'π' not in L }
+
+	# keys for both dicts (s, t) are the "convex" edge labels,
+	#   i.e., those with β >= α γ
 	t = {}
-	s = {}
+	s = {} 
 
 	def mu_marg(*varis):
 		return marginalize(mu, M.dshape, M._idxs(*varis))
@@ -444,72 +488,158 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 
 	for L,X,Y,α,β,p in M.edges("l,X,Y,α,β,P"):
 		if 'π' in L: continue
-
 		sL = (β - gamma * α)
 
-		if sL > 0: # this part is convex
+		if sL >= 0: # this part is convex
+			print("(vex)   ", L, '\t', sL)
+
 			t[L] = cp.Variable(p.to_numpy().size)
 			cone = ExpCone(-t[L], 
-				#    mu.T @ mk_projector(M.dshape, M._idxs(X,Y)), 
-					# marginalize(mu, M.dshape, M._idxs(X,Y)),
 					mu_marg(X,Y),
-				#    cp.vec(cpd2joint(p, marginalize(mu, M.dshape, M._idxs(X))) ))
-					cp.vec(n_copies(mu_marg(X), len(Y)))
-				#    cp.vec(cpd2joint(p, mu.T @ mk_projector(M.dshape, M._idxs(X))) )) 
-			) 
+					cp.vec(cpd2joint_np(np.ones(p.shape), mu_marg(X)))	) 
 			s[L] = sL
 			cvx_tol_constraints.append(cone)
 
 		else: # this part is concave
 			cave_edges.append((L,X,Y,sL))
+			print("(cave)  ", L, '\t', sL)
 
 
-	def g(muar) : # concave part
-		return sum(
-			np.sum(sL * muar * ( np.log( mu_marg(X,Y) ) 
-			           - np.log( cp.vec(n_copies(mu_marg(X), len(Y))) )) )
-			for L,X,Y,sL in cave_edges
-		)
+	from ..dist import zz1_div, z_mult, D_KL
 
-	def grad_g(mu):
-		return sum(
-			sL * ( np.log( mu_marg(X,Y) ) 
-			           - np.log( cp.vec(n_copies(mu_marg(X), len(Y))) )) 
-			for L,X,Y,sL in cave_edges
-		) - g(mu)
+	def g(x : RJD) : # concave part
+		val = 0
+		for L,X,Y,sL in cave_edges:
+			muxy = x.prob_matrix(X,Y)
+			mux = x.prob_matrix(X)
+			vmat = sL * z_mult( muxy , np.ma.log( np.ma.divide(muxy, mux) ))
+			val += vmat.sum()
+		return val 
+
+	def g_p(nu) : # concave part, for cvxpy expressions
+		val = 0
+		for L,X,Y,sL in cave_edges:
+			xyind = M._idxs(X,Y)
+			nuxy = marginalize(nu, M.dshape, xyind)
+			nux = marginalize(nu, M.dshape, M._idxs(X))
+			ones = np.ones((len(X), len(Y)))
+			nux_same = cp.vec(cpd2joint_np(ones, nux))
+
+			vmat = sL * cp.multiply(nuxy, cp.log( nuxy ) - cp.log(nux_same) )
+			val += cp.sum(vmat)
+		return val 
+
+	def grad_g(x : RJD):
+		val = np.zeros(x.data.shape)
+
+		for L,X,Y,sL in cave_edges:
+			muxy = x.prob_matrix(X,Y)
+			mux = x.prob_matrix(X)
+			# vmat = sL * z_mult( muxy , np.ma.log( np.ma.divide(muxy, mux) ))
+			vmat = sL *  np.ma.log( np.ma.divide(muxy, mux))
+			val += vmat - z_mult(muxy, vmat).sum()
+
+		return val.reshape(-1)
+	
+	def grad_g_p(nu):
+		val = np.zeros(nu.shape)
+		# print(nu.shape)
+
+		for L,X,Y,sL in cave_edges:
+			xyind = M._idxs(X,Y)
+			nuxy = marginalize(nu, M.dshape, xyind)
+			nux = marginalize(nu, M.dshape, M._idxs(X))
+			ones = np.ones((len(X), len(Y)))
+			nux_same = cp.vec(cpd2joint_np(ones, nux))
+
+			# print(ones.shape, nux_same.shape, nuxy.shape)
+
+			local_mat = sL * (cp.log( nuxy ) - cp.log(nux_same))
+			vmat = dup2shape(local_mat, M.dshape, xyind)
+			val += vmat - cp.sum(cp.multiply(nuxy, local_mat))
+
+		return val
 
 
-	logprobs = sum(
-		- β * cp.multiply( np.log(p).to_numpy().reshape(-1), mu_marg(X,Y))
-		for L,X,Y,β,p in M.edges("l,X,Y,β,P")  if 'π' not in L
-	)
+	hard_constraints = []
+	logprobs = 0
+	for L,X,Y,β,p in M.edges("l,X,Y,β,P"):
+		if 'π' not in L:
+			p = p.to_numpy()
+			zero = (p == 0)
+			# lp = - np.ma.log(p)
+			lp = - np.ma.log(p)
 
-	### ---  MANUAL VERSION  ---
+			if(np.any(zero)):
+				lp = np.where(zero, 0, lp)
+
+				hard_constraints.append(
+					mu_marg(X,Y)[np.argwhere(p.reshape(-1)==0)] == 0
+				)
+
+			lin_lp = cp.sum( cp.multiply(lp.reshape(-1), mu_marg(X,Y)) )
+			logprobs += β * lin_lp
+
+
+
+	## add entropy constraints
+	global_t_ent = cp.Variable(n)
+	prev_val = np.inf
+
+	# frozen = cp.Parameter(mu.size)
+
+	# linearized = cp.sum(
+	# 	cp.multiply((mu-frozen), grad_g_p(frozen))
+	# )
+	# prob = cp.Problem( 
+	# 	cp.Minimize( 
+	# 		logprobs +
+	# 		linearized + 
+	# 		sum( s[L] * sum(t[L]) for L,tL in t.items() ) 
+	# 		+ gamma * cp.sum(global_t_ent) # entropy term
+	# 	),
+	# 	cvx_tol_constraints 
+	# 		+ hard_constraints
+	# 		+ [sum(mu) == 1]
+	# 		+ [ ExpCone(-global_t_ent, mu, np.ones(mu.shape)) ] 
+	# )
+
 	for it in range(max_iters):
-		if mu.value == None:
-			prob.solve()
-		
-		frozen = mu.value
+		if mu.value is None:
+			frozen = M.genΔ(RJD.unif)
+			# frozen.value = M.genΔ(RJD.unif).data.reshape(-1)
+		else:
+			frozen = RJD(mu.value.copy(), M.varlist)
+			# frozen.value = mu.value.copy()
+
 
 		linearized = cp.sum(
-			cp.multiply((mu-frozen), grad_g(frozen))
+			cp.multiply((mu - frozen.data.reshape(-1)), grad_g(frozen))
 		)
-
 		prob = cp.Problem( 
 			cp.Minimize( 
-				logprobs + linearized + 
+				logprobs +
+				linearized + 
 				sum( s[L] * sum(t[L]) for L,tL in t.items() ) 
-				# TODO + entropy
+				+ gamma * cp.sum(global_t_ent) # entropy term
 			),
-			cvx_tol_constraints + [sum(mu) == 1] 
+			cvx_tol_constraints 
+				+ hard_constraints
+				+ [sum(mu) == 1]
+				+ [ ExpCone(-global_t_ent, mu, np.ones(mu.shape)) ] 
 		)
 
 		prob.solve()
-		print(prob.value)
+
+		# print(prob.value + g_p(frozen.value))
+		print('obj: ', prob.value + g(frozen), '\t\t tv distance', np.max(np.absolute(mu.value-frozen.data.reshape(-1)))  )
+		if(prob.value == prev_val) or (np.allclose(mu.value, frozen.data.reshape(-1), rtol=1E-4, atol=1E-8)):
+			break
+		prev_val = prob.value
 
 
 			
-	prob.solve(method='dccp', **solver_kwargs) 
+	# prob.solve(method='dccp', **solver_kwargs) 
 	# prob.solve(**solver_kwargs)
 
 
