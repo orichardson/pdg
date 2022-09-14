@@ -17,6 +17,9 @@ import itertools
 
 def _mk_projector(dshape, IDXs) -> np.array : 
 	"""
+	A slow (depricated) way of marginalizing: make a large matrix that's 
+	mostly full of zeros that computes the appropriate sums
+
 	:param dshape: a shape for the joint distribution, say (d_1, ..., d_n)
 	:param IDXs: the list of indices, say [d_{i1}, ... ]
 	:return: a numpy array
@@ -29,34 +32,31 @@ def _mk_projector(dshape, IDXs) -> np.array :
 	return A_proj_IDXs.reshape(np.prod(dshape), np.prod([dshape[i] for i in IDXs]))
 
 def _marginalize_via_projector(mu, M, varis):
+	""" A drop-in replacement for _marginalize that uses the _mk_projector method. """
 	return mu.T @ _mk_projector(M.dshape, M._idxs(*varis))
 
 def _marginalize(mu, shape, IDXs):
-	 # to prevent strangeness with raveling for unit, just return the sum
 	if len(IDXs) == 0: 
+	 	# to prevent strangeness with "raveling" when marginalizing to keep nothing,
+		# just return the sum, still with a dimension
 		return cp.sum(mu, keepdims=True)
 
 	postshape = tuple(shape[i] for i in IDXs)
+	# preallocate list of the appropriate size. Will eventually hold 
+	# scalar cp.expressions; will be converted to a cp.expression by operator overloading after addition.
 	elts = [0] *  np.prod( postshape, dtype=int) 
-		# preallocate list of the appropriate size. Will eventually hold 
-		# scalar cp.expressions, which I will aggregate with cp.bmat
-	## will be converted to a cp.expression by operator overloading after addition.
 		
-	# print(shape,IDXs,end='\n',flush=True)
-	##
-	
-	# print('\tmarginalizing : ', mu.size, shape, IDXs)
 	II = np.arange(mu.size)
 	v_idx = np.unravel_index(II, shape)
 	idx = np.ravel_multi_index(tuple(v_idx[j] for j in IDXs), postshape)
 
-	# print('\n\t',end='')
 	for i in range(len(elts)):
-		# print('\t[%d / %d] components' % (i,len(elts)),end='\r' if i < len(elts)-1 else '\n',flush=True)
 		idxs_i = np.nonzero((idx==i))
 		elts[i] = cp.sum(mu[idxs_i])
 	
-	# scalar cp.expressions, which I will aggregate with cp.bmat
+	## commmented out below: a slower element-wise version of this code
+	## with many calls to np.ravel / np.unravel
+	#
 	# for i, mui in enumerate(mu):
 	# 	v_idx = np.unravel_index(i, shape)  # virtual index
 	# 	# print('FLAT: ', i, '\t VIRTUAL: ', v_idx, '\t in shape ', shape)
@@ -68,16 +68,14 @@ def _marginalize(mu, shape, IDXs):
 	return cp.hstack(elts)
 
 def _cpd2joint(cpt, mu_X):
-	P = cpt.to_numpy()
-	# print("P shape: ", P.shape, "\t μ_X shape : ", mu_X.shape)
-	return cp.vstack([ P[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
+	return cp.vstack([ cpt.to_numpy()[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
 
 def _cpd2joint_np(cpt, mu_X):
-	P = cpt
-	# print("P shape: ", P.shape, "\t μ_X shape : ", mu_X.shape)
-	return cp.vstack([ P[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
+	return cp.vstack([ cpt[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
 
 def _combine_iters(it1, it2, sel): 
+	""" merges the two iterators, at each point using sel (an iterable of 0/1 or True/False)
+	to decide which iterator to advance next. """
 	i1 = iter(it1)
 	i2 = iter(it2)
 	for s in sel: 
@@ -97,14 +95,12 @@ def _dup2shape(cvxpy_expr, shape, idxs):
 
 	unwound = list(cvxpy_expr)
 	
-	# not_idx = tuple(i for i in range(len(shape)) if i not in idxs)
 	not_shape = tuple(shape[i] for i in range(len(shape)) if i not in idxs)
 
 	expr_coords = np.unravel_index(np.arange(m), expr_vshape)
 	to_ret = np.zeros(shape, dtype='object')
-	
 
-	# prematurely "optimized" because I didn't want to iterate
+	# perhaps prematurely "optimized" because I didn't want to iterate
 	# through everything
 	for non_coords in np.ndindex(*not_shape):
 		full_coords = tuple(_combine_iters(
@@ -130,14 +126,11 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 	n = np.prod(M.dshape)
 	mu = cp.Variable(n, nonneg=True)
 	t = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
-	# t = { L : cp.Variable(n) for L in M.edges("l") if 'π' not in L }
 	
 	beta_tol_constraints = [
 		ExpCone(-t[L], 
-			#    mu.T @ _mk_projector(M.dshape, M._idxs(X,Y)), 
 			   _marginalize(mu, M.dshape, M._idxs(X,Y)),
 			   cp.vec(_cpd2joint(p, _marginalize(mu, M.dshape, M._idxs(X))) ))
-			#    cp.vec(_cpd2joint(p, mu.T @ _mk_projector(M.dshape, M._idxs(X))) )) 
 			for L,X,Y,p in M.edges("l,X,Y,P") if 'π' not in L
 	]
 	
@@ -145,7 +138,6 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 		cp.Minimize( sum(βL * sum(t[L]) for βL,L in M.edges("β,l") if 'π' not in L) ),
 			[sum(mu) == 1] + beta_tol_constraints)
 	prob.solve(**solver_kwargs) 
-	
 
 	# now, do the same thing again, but with prob.mu as initialization and new constraints
 	if also_idef: 
@@ -158,10 +150,8 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 				cp.vec(_cpd2joint(oldmuPr(Y|X), _marginalize(mu, M.dshape, M._idxs(X)) ))
 			for L,X,Y,p in M.edges("l,X,Y,P") if 'π' not in L
 		]
-		# the new objective is KL( mu || prod of marginals of oldmu.Pr )
-		# Or directly: use 1 instead of p to get only form.
+		# the new objective is KL( mu || prod of marginals of oldmu.Pr ^ \alpha )
 		Pr = oldmu_dist.prob_matrix
-		# fp = reduce(mul, [ Pr(Y|X) for X,Y in M.edges("X,Y")])
 		fp = np.prod( [ Pr(Y|X)**α for X,Y,α in M.edges("X,Y,α")] )
 		tt = cp.Variable(n)
 
@@ -170,25 +160,7 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 			cm_constraints + [ ExpCone(-tt, mu, fp.reshape(-1) ), sum(mu) == 1]
 		)
 		new_prob.solve(**solver_kwargs);
-		#########
-		## UPDATE: this doesn't include the final -H(mu) term! How to fix?
-		###
-		#  alpha_tol_constraints = [
-		#     cp.constraints.exponential.ExpCone(
-		#         -t[L], 
-		#         _marginalize(mu, M.dshape, M._idxs(X,Y)),
-		#         cp.vec(_n_copies(_marginalize(mu, M.dshape, M._idxs(X)), len(Y)) ))
-		#     for L,X,Y in M.edges("l,X,Y") if 'π' not in L
-		#  ]
-		# new_prob = cp.Problem(
-		#     cp.Minimize(sum(αL * sum(t[L]) for αL,L in M.edges("α,l") if 'π' not in L)),
-		#     cm_constraints + alpha_tol_constraints + [sum(mu) == 1]
-		# )
-		# new_prob.solve();
-		###########
-
 		
-	
 	## save problem, etc as properties of method so you can get them afterwards.
 	cvx_opt_joint.prob = prob
 	cvx_opt_joint.t = t
@@ -256,50 +228,33 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	ts = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
 	
 	tol_constraints = []
-	k = 0
 	for L,X,Y,p in M.edges("l,X,Y,P"):
 		if 'π' not in L:
-			k += 1
-			# print("[%d] adding constr "%k, L, ': ', X.name , '->',Y.name, end='\n',flush=True)
-
 			i = edgemap[L]
-			# print(L, i, X.name, Y.name)
 			C = varname_clusters[i]            
 			
 			idxs_XY = [C.index(N.name) for N in (X&Y).atoms]
 			idxs_X = [C.index(N.name) for N in X.atoms]
 			
-			# print('\tabout to marginalize', end='\n',flush=True)
 			xymarginal = _marginalize(mus[i], cluster_shapes[i], idxs_XY)
-			# print('\tabout to construct expcone', end='\n',flush=True)
-			# print('\tmus[i].shape ', mus[i].shape, end='\n',flush=True)
-			expcone = cp.constraints.exponential.ExpCone(-ts[L], 
-			#    mus[i].T @ _mk_projector(cluster_shapes[i], idxs_XY), 
-			   xymarginal, 
-			#    cp.vec(_cpd2joint(p, mus[i].T @ _mk_projector(cluster_shapes[i], idxs_X)) )) 
-			   cp.vec(_cpd2joint(p,_marginalize(mus[i], cluster_shapes[i], idxs_X)) )) 
-			# print('\texpcone constructed', end='\n',flush=True)
-			tol_constraints.append(expcone)
+
+			tol_constraints.append(ExpCone(-ts[L], xymarginal, 
+			   cp.vec(_cpd2joint(p,_marginalize(mus[i], cluster_shapes[i], idxs_X)) )) )
 
 			if dry_run:
 				break
 
 	local_marg_constraints = []
 	
-	# for i in range(m):
-	# 	for j in range(i+1,m):
+
 	for Ci, Cj in cluster_edges:
-		# common = set(Cs[i]) & set(Cs[j])
-		print(Ci,Cj)
 		common = set(Ci) & set(Cj)
 		if len(common) > 0:
+			# Add a constraint that the marginals of these two clusters agree.
 			i, j = Cs.index(Ci), Cs.index(Cj)
-			# print("adding common constr between (",i,",",j,') : ', common,flush=True)
 
 			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
 			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
-			# ishareproj = _mk_projector(cluster_shapes[i], i_idxs)
-			# jshareproj = _mk_projector(cluster_shapes[j], j_idxs)
 			
 			marg_constraint = _marginalize(mus[i], cluster_shapes[i], i_idxs)\
 					== _marginalize(mus[j], cluster_shapes[j], j_idxs)
@@ -318,8 +273,7 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	
 	fp = None
 	if also_idef:
-		# hmmm do we need to use Bethe entropy? Or Kikuchi approximations? Might not be cvx....
-		#  ... unless clusters are tree. But don't we need to prove it's cvx with the type system? 
+		# Also implement the Bethe entropy along this tree
 		old_cluster_rjds = {}
 		for i,C in enumerate(Cs):
 			old_cluster_rjds[i] = RJD(mus[i].value.copy(), [M.vars[n] for n in C])
@@ -328,29 +282,24 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 		cpds = {}
 		cm_constraints = []
 		for L,X,Y,p in M.edges("l,X,Y,P"):
-			if 'π' not in L:
-				i = edgemap[L]
-				C = Cs[i]
-				sh = cluster_shapes[i]  
-				
-				idxs_XY = [C.index(N.name) for N in (X&Y).atoms]
-				idxs_X = [C.index(N.name) for N in X.atoms]
+			if 'π' in L: continue
 
-				cpd = old_cluster_rjds[edgemap[L]].conditional_marginal(Y|X)
-				cpds[L] = cpd
-				# print("Pr(", Y, "|", X ,")")
-				# print()
-				# print(cpd)
-				# print(p)
-				# print()
-				# print(old_cluster_rjds[edgemap[L]][X,Y])
-				# print()
+			i = edgemap[L]
+			C = Cs[i]
+			sh = cluster_shapes[i]  
+			
+			idxs_XY = [C.index(N.name) for N in (X&Y).atoms]
+			idxs_X = [C.index(N.name) for N in X.atoms]
 
-				cm_constraints.append(
-					_marginalize(mus[i], sh, idxs_XY)
-						==
-					cp.vec(_cpd2joint(cpd, _marginalize(mus[i], sh, idxs_X)))
-				)
+			cpd = old_cluster_rjds[edgemap[L]].conditional_marginal(Y|X)
+			cpds[L] = cpd
+
+			# constrain to be the same conditional marginals as we had before
+			cm_constraints.append(
+				_marginalize(mus[i], sh, idxs_XY)
+					==
+				cp.vec(_cpd2joint(cpd, _marginalize(mus[i], sh, idxs_X)))
+			)
 
 
 		## next, we're going to add the IDef terms.
@@ -359,23 +308,25 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 		# We're going to need the Bethe entropy along the tree, 
 		# which involves calculating the sepset beliefs,
 		# and to keep the program convex, we need at most one per cluster. 
-		# So. First we find a root, which doesn't get such a term,
-		# and then apply the appropriate correction term as we traverse the tree.
-		# print(Cs)
-		# print(m, 'cluster; \t edges: ', cluster_edges)
+		# So, we find a directed spanning tree, called an "aboresence",
+		# and then apply the appropriate correction to the tail of each
+		# edge in the tree.
 		Gr = nx.Graph(cluster_edges).to_directed()
 		Gr.add_nodes_from(Cs)
 		nx.set_edge_attributes(Gr, 
-			{e : {'weight' : np.prod([len(M.vars[x]) for x in e[1]]) }
-				for e in Gr.edges() })
-		print(Gr.edges(data=True))
+			{e : { # we want a spanning aboressence that selects the biggest possible
+				   # root node, because we don't have to marginalize to get a
+				   # correction term for it.
+				   'weight' : np.prod([len(M.vars[x]) for x in e[1]])  }
+				for e in Gr.edges() }
+		)
 		ab = nx.minimum_spanning_arborescence(Gr)
 
 
 		for i in range(m):
-			# fp = np.prod( [np.ones(cluster_shapes[i])]+[old_cluster_rjds[i].prob_matrix(Y|X) **α 
-			# 	for X,Y,L,α in M.edges("X,Y,L,α") if edgemap[L] == i] )
 			fp = reduce(mul, 
+				# first term is just here to make sure this value broadcasts to the 
+				# right shape, even if not all variables are used (e.g., for an empty PDG)
 				[np.ones(cluster_shapes[i])]+
 				[old_cluster_rjds[i].prob_matrix(Y|X) **α 
 					for X,Y,L,α in M.edges("X,Y,L,α") if edgemap[L] == i  
@@ -427,18 +378,11 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 						# 	elts[i] = cp.sum(mu[idxs_i])
 
 			correction = cp.hstack(correction_elts)
-			# print(Cs[i], cluster_shapes[i])
-			# print('correction shape: ', correction.shape)
-			# print(correction.is_dcp())
-			# print(correction.is_affine())
-			# print('fp.shape: ', fp.shape)
-			
+
 			tol_constraints.append(ExpCone(
 				-tts[i],
 				mus[i],
-				# fp.reshape(-1) * correction ## FIXME this doesn't work
 				cp.multiply(fp.reshape(-1), correction)
-				# fp.reshape(-1)
 			));
 
 		new_prob =cp.Problem(
@@ -451,9 +395,7 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 			# + [mus[i] >= 0 for i in range(m)]
 		)
 		new_prob.solve(**solver_kwargs)
-		# raise NotImplemented
 	
-	## save problem, etc as properties of method so you can get them afterwards.
 	# return RJD(mu.value, M.varlist)
 	return namedtuple("ClusterPseudomarginals", ['marginals', 'value'])(
 		marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
@@ -669,7 +611,6 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 			logprobs += β * lin_lp
 
 
-
 	## add entropy constraints
 	global_t_ent = cp.Variable(n)
 	prev_val = np.inf
@@ -709,9 +650,6 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 			# (np.allclose(mu.value, frozen.value, rtol=1E-6, atol=1E-9)):
 			break
 		prev_val = prob.value
-			
-	# prob.solve(method='dccp', **solver_kwargs) 
-	# prob.solve(**solver_kwargs)
 
 	return RJD(mu.value, M.varlist)
 
@@ -847,10 +785,10 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 
 		for i,nu in enumerate(nus):
 			for L,X,Y,sL in cave_edges:
-				# if not all((N.name in Cs[i]) for N in (X&Y).atoms): continue
-				## contrast with: 
 				if i != edgemap[L]: continue
-				## are they different?
+				## contrast with: 
+				# if not all((N.name in Cs[i]) for N in (X&Y).atoms): continue
+				## ... which seems to be unstable and give the wrong gradient sometimes
 
 				nuxy = nu.prob_matrix(X,Y)
 				nux = nu.prob_matrix(X)
@@ -904,9 +842,8 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 
 
 		linearized = sum(
-			# cp.multiply((mu - frozen.data.reshape(-1)), grad_g(frozen))
 			cp.sum( cp.multiply((m - f.data.reshape(-1)), gg ))
-			for m, f, gg in zip( mus, frozens, grad_g(frozens) )
+				for m, f, gg in zip( mus, frozens, grad_g(frozens) )
 		)
 		prob = cp.Problem( 
 			cp.Minimize( 
@@ -919,8 +856,6 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 				+ hard_constraints
 				+ local_marg_constraints # new for clusters
 				+ [ cp.sum(mu) == 1 for mu in mus ]
-				# + [ ExpCone(-global_t_ent, mu, np.ones(mu.shape)) ] 
-				# TODO FIXME must be done in the same way as also_idef in cluster_opt
 				+ ent_tol_constraints
 		)
 
@@ -931,27 +866,23 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 				  for mu,frozen in zip(mus, frozens))  )
 
 		if(prob.value == prev_val) or all(
-			# np.allclose(mu.value, frozen.data.reshape(-1), rtol=1E-6, atol=1E-9)
 			np.sum(np.absolute(mu.value-frozen.data.reshape(-1))) <= 1E-6
 				for mu, frozen in zip(mus, frozens)):
 			break
 
 		prev_val = prob.value
 
-	
-	## save problem, etc as properties of method so you can get them afterwards.
-	# return RJD(mu.value, M.varlist)
 	return namedtuple("ClusterPseudomarginals", ['marginals', 'value'])(
 		marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
-		# prob=prob,
-		# fp = fp,
 		value=prob.value)
 
 
 # Direct encoding of the objective. Cvxpy cannot solve!
 def _cvx_opt_direct(M, gamma=1, **solver_kwargs):
 	"""
-	DO NOT USE!  Will Raise Exception: Problem is not DCCP. 
+	DO NOT USE!  Will Raise Exception: Problem is not DCP nor DCCP. 
+	It is just here to show that direct optimization of the
+	objective cannot be done even with the built-in dccp algorithm.
 	"""
 	n = np.prod(M.dshape)
 	mu = cp.Variable(n, nonneg=True)
