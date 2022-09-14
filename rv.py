@@ -101,7 +101,7 @@ class Variable(set, metaclass=utils.CopiedType):
 
     def __eq__(self, other):
         return set.__eq__(self, other) and (
-                self.name == other.name if hasattr(self,"name") else true)
+                self.name == other.name if hasattr(self,"name") else True)
 
 
     def split(self, atomic=True):

@@ -67,8 +67,9 @@ class TensorLibrary:
             # pass
         # return View(self).__getattr__(name)
     
-    def __setattr__(self, name, val):
-        self.tensordata[name] = self._enc(val)
+    ## CANNOT HAVE THIS and also set self.ushape/self.encoder/etc. in constructor!
+    # def __setattr__(self, name, val):
+    #     self.tensordata[name] = self._enc(val)
         
     # def __iadd__(self, other):
         # pass
@@ -124,7 +125,7 @@ class TensorLibrary:
     # def j
     #TODO: niciefy this
     def __repr__(self):
-        return "<DistLib with keys {%s}>"%s
+        return "<DistLib with keys {%s}>" % repr(self().tags)
 
     def __iter__(self):
         return iter(LView(self))
