@@ -11,7 +11,6 @@ from collections.abc import Iterable
 from collections import namedtuple
 from operator import mul
 from functools import reduce
-import itertools 
 
 ############### UTILITY METHODS ############
 
@@ -20,8 +19,8 @@ def _mk_projector(dshape, IDXs) -> np.array :
 	A slow (depricated) way of marginalizing: make a large matrix that's 
 	mostly full of zeros that computes the appropriate sums
 
-	:param dshape: a shape for the joint distribution, say (d_1, ..., d_n)
-	:param IDXs: the list of indices, say [d_{i1}, ... ]
+	:param `dshape`: a shape for the joint distribution, say (d_1, ..., d_n)
+	:param `IDXs`: the list of indices, say [d_{i1}, ... ]
 	:return: a numpy array
 	"""
 	nvars = len(dshape)
@@ -32,10 +31,13 @@ def _mk_projector(dshape, IDXs) -> np.array :
 	return A_proj_IDXs.reshape(np.prod(dshape), np.prod([dshape[i] for i in IDXs]))
 
 def _marginalize_via_projector(mu, M, varis):
-	""" A drop-in replacement for _marginalize that uses the _mk_projector method. """
+	""" A drop-in replacement for `_marginalize` that uses the `_mk_projector` method. """
 	return mu.T @ _mk_projector(M.dshape, M._idxs(*varis))
 
 def _marginalize(mu, shape, IDXs):
+	""" Given a (flat) cvxpy expression `mu` (a joint distribution), which implicitly we think
+	 of as having a certain `shape`, return its (flat) marginal on the indices in the list `IDXs`.
+	"""
 	if len(IDXs) == 0: 
 	 	# to prevent strangeness with "raveling" when marginalizing to keep nothing,
 		# just return the sum, still with a dimension
@@ -74,8 +76,8 @@ def _cpd2joint_np(cpt, mu_X):
 	return cp.vstack([ cpt[i,:] * mu_X[i] for i in range(mu_X.shape[0])] ).T    
 
 def _combine_iters(it1, it2, sel): 
-	""" merges the two iterators, at each point using sel (an iterable of 0/1 or True/False)
-	to decide which iterator to advance next. """
+	""" merges the two iterators, at each point using `sel` (an iterable of 0/1 or True/False)
+	to decide which iterator (`i1` or `i2`) to take from next. """
 	i1 = iter(it1)
 	i2 = iter(it2)
 	for s in sel: 
@@ -84,8 +86,9 @@ def _combine_iters(it1, it2, sel):
 
 def _dup2shape(cvxpy_expr, shape, idxs):
 	"""takes a cvxpy expression `cvxpy_expr` representing flattened marginals along dimensions `idxs` in
-	the context of a joint n-dimensional array of shape `shape`, and
-	:returns: a version of cvxpy_expr suitable for element-wise multiplication, i.e., of that same joint shape."""
+	the context of a joint n-dimensional array of shape `shape`, and 
+	returns a version of `cvxpy_expr` suitable for element-wise multiplication, 
+		i.e., of that same joint shape."""
 	n = np.prod(shape)
 	expr_vshape = tuple(shape[i] for i in idxs)
 	m = np.prod(expr_vshape)
@@ -115,14 +118,73 @@ def _dup2shape(cvxpy_expr, shape, idxs):
 	return cp.hstack(to_ret.reshape(-1))
 
 def _n_copies( mu_X, n ):
-	""" an analogue of cpd2joint, which just does broadcasting, 
-		effectively with a "cpd" that is constant ones. """
+	""" an analogue of `_cpd2joint`, which just does broadcasting, 
+		effectively with a "cpd" that is constant ones. 
+	WARNING: may not quite be correct!! """
 	# do a hstack, because we're not iterating over indices.
 	return cp.hstack( [ mu_X for _ in range(n) ] ).T
+
+
+def _find_cluster_graph(M : PDG, 
+		varname_clusters = None, cluster_edges =None,
+		verbose=False
+	):
+	"""
+	Given a PDG `M`, and possibly a specification of which clusters and / or cluster
+	edges we want to see in the graph, find a cluster graph (ideally a cluster tree)
+	that has the running intersection property.
+	"""
+	if varname_clusters is None:
+		if verbose: print("no clusters given; using pgmpy junction tree to find some.")
+
+		jtree = M.to_markov_net().to_junction_tree()
+		varname_clusters = list(jtree.nodes())
+		cluster_edges = list(jtree.edges())
+
+		if verbose: print("FOUND: ",varname_clusters)
+
+	Cs = [tuple(C) for C in varname_clusters]
+	m = len(varname_clusters)
+
+	if cluster_edges is None:
+		complete_graph = nx.Graph()
+		for i in range(m):
+			for j in range(i+1,m):
+				common = set(Cs[i]) & set(Cs[j])
+				complete_graph.add_edge(Cs[i], Cs[j], weight=-len(common))
+
+				## might want to weight by number of params (like below), but might not give
+				## the running intersection property, so instead do the above.
+				#
+				# num_sepset_params = np.prod([len(M.vars[X]) for X in common])
+ 				# complete_graph.add_edge(Cs[i], Cs[j], weight=-num_sepset_params)
+		
+		cluster_edges = nx.minimum_spanning_tree(complete_graph).edges()
+
+	cluster_shapes = [tuple(len(M.vars[Vn]) for Vn in C) for C in Cs]
+
+	edgemap = {} # label -> cluster index
+	
+	sorted_clusters = sorted(enumerate(Cs), key=lambda iC: np.prod(cluster_shapes[iC[0]]))
+	if verbose: print(sorted_clusters)
+
+	for L, X, Y in M.edges("l,X,Y"):
+		for i,cluster in sorted_clusters:
+			if all((N.name in cluster) for N in (X & Y).atoms):
+				edgemap[L] = i
+				break
+		else:
+			raise ValueError("Invalid Cluster Tree: an edge (%s: %s → %s) is not contained in any cluster"
+				% (L,X.name,Y.name) )
+
+	return Cs, cluster_edges, edgemap, cluster_shapes
 
 ############# INFERENCE ALGORITHMS ############
 # optimizes over joint distributions
 def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
+	""" Given a pdg `M`, do convex optimization to find a distribution that minimizes Inc.
+	if `also_idef=True`, then find the unique such distribution that also minimizes IDef 
+	subject to these constraints, by solving a second optimization problem afterwards."""
 	n = np.prod(M.dshape)
 	mu = cp.Variable(n, nonneg=True)
 	t = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
@@ -171,58 +233,17 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 def cvx_opt_clusters( M : PDG, also_idef=True, 
 		varname_clusters = None, cluster_edges = None,
 		dry_run=False, **solver_kwargs) :
-	if(varname_clusters == None):
-		print("no clusters given; using pgmpy junction tree to find some.")
+	""" Given a pdg `M`, do a convex optimization to find (a compact representation of) a 
+	joint distribution which minimizes Inc. This is done by only tracking the cluster marginals
+	along a cluster tree; it can be shown that any minimizer of Inc for \gamma > 0 must be of
+	this form. 
 
-		jtree = M.to_markov_net().to_junction_tree()
-		varname_clusters = list(jtree.nodes())
-		cluster_edges = list(jtree.edges())
+	This method is a generalization of `cvx_opt_joint`. 
+	"""
+	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
 
-		print("FOUND: ",varname_clusters)
-
-	Cs = [tuple(C) for C in varname_clusters]
-	cluster_shapes = [tuple(len(M.vars[Vn]) for Vn in C) for C in Cs]
-	m = len(varname_clusters)
-
-	if cluster_edges == None:
-		complete_graph = nx.Graph()
-		for i in range(m):
-			for j in range(i+1,m):
-				common = set(Cs[i]) & set(Cs[j])
-				num_sepset_params = np.prod([len(M.vars[X]) for X in common])
-
-				complete_graph.add_edge(Cs[i], Cs[j], weight=-len(common))
-				# complete_graph.add_edge(Cs[i], Cs[j], weight=-num_sepset_params)
-				# complete_graph.add_edge(i, j, weight=-num_sepset_params)
-		
-		cluster_edges = nx.minimum_spanning_tree(complete_graph).edges()
-
-	## Now, we have to make sure that the "running intersection property" (?) 
-	# is satisifed. We can't have a cluster tree
-	#  (ab)  -- (d) -- (ac)   
-	# because the middle node doesn't have a, so we wouldn't enforce marginal constraints
-	# properly, were we to only look along edges. So formally, we require that, for every
-	# clusters i and j, we have C_i \cap C_j must be contained in every node in the unique
-	# path from C_i to C_j in the cluster tree.
-	
-	edgemap = {} # label -> cluster index
-	# var_clusters = []
-	
-	
-	sorted_clusters = sorted(enumerate(Cs), key=lambda iC: np.prod(cluster_shapes[iC[0]]))
-	print(sorted_clusters)
-
-	for L, X, Y in M.edges("l,X,Y"):
-		# for i,cluster in enumerate(Cs):
-		for i,cluster in sorted_clusters:
-			atoms = (X & Y).atoms
-			# if all((N.name in cluster or N.is1) for N in atoms):
-			if all((N.name in cluster) for N in atoms):
-				edgemap[L] = i
-				break;
-		else:
-			raise ValueError("Invalid Cluster Tree: an edge (%s: %s → %s) is not contained in any cluster"
-				% (L,X.name,Y.name) )
+	Cs, cluster_edges, edgemap, cluster_shapes = _find_cluster_graph(varname_clusters, cluster_edges, verb) 
+	m = len(Cs)
 
 	mus = [ cp.Variable(np.prod(shape), nonneg=True) for shape in cluster_shapes]
 	ts = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
@@ -305,12 +326,11 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 		## next, we're going to add the IDef terms.
 		tts = [ cp.Variable( np.prod(shape)) for shape in cluster_shapes ]
 		tol_constraints = []
-		# We're going to need the Bethe entropy along the tree, 
-		# which involves calculating the sepset beliefs,
-		# and to keep the program convex, we need at most one per cluster. 
-		# So, we find a directed spanning tree, called an "aboresence",
-		# and then apply the appropriate correction to the tail of each
-		# edge in the tree.
+		# We're going to need the Bethe entropy along the tree, which involves calculating
+		# the sepset beliefs, and to keep the program convex, we need at most one per cluster.
+		# So, we find a directed spanning tree, called an "aboresence", and then apply
+		# the appropriate correction to the tail of each edge in the tree.
+
 		Gr = nx.Graph(cluster_edges).to_directed()
 		Gr.add_nodes_from(Cs)
 		nx.set_edge_attributes(Gr, 
@@ -658,55 +678,14 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		varname_clusters = None, cluster_edges = None,
 		**solver_kwargs) :
-	if(varname_clusters == None):
-		print("no clusters given; using pgmpy junction tree to find some.")
+	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
 
-		jtree = M.to_markov_net().to_junction_tree()
-		varname_clusters = list(jtree.nodes())
-		cluster_edges = list(jtree.edges())
-
-		print("FOUND: ",varname_clusters)
-
-	Cs = [tuple(C) for C in varname_clusters]
-	cluster_shapes = [tuple(len(M.vars[Vn]) for Vn in C) for C in Cs]
-	m = len(varname_clusters)
-
-	if cluster_edges == None:
-		complete_graph = nx.Graph()
-		for i in range(m):
-			for j in range(i+1,m):
-				common = set(Cs[i]) & set(Cs[j])
-				num_sepset_params = np.prod([len(M.vars[X]) for X in common])
-
-				complete_graph.add_edge(Cs[i], Cs[j], weight=-len(common))
-				# complete_graph.add_edge(Cs[i], Cs[j], weight=-num_sepset_params)
-				# complete_graph.add_edge(i, j, weight=-num_sepset_params)
-		
-		cluster_edges = nx.minimum_spanning_tree(complete_graph).edges()
-
-	
-	sorted_clusters = sorted(enumerate(Cs), key=lambda iC: np.prod(cluster_shapes[iC[0]]))
-	print(sorted_clusters)
-
-	# assign each edge L to a cluster, prioritizing smaller clusters.
-	edgemap = {} # label -> cluster index
-	for L, X, Y in M.edges("l,X,Y"):
-		# for i,cluster in enumerate(Cs):
-		for i,cluster in sorted_clusters:
-			atoms = (X & Y).atoms
-			# if all((N.name in cluster or N.is1) for N in atoms):
-			if all((N.name in cluster) for N in atoms):
-				edgemap[L] = i
-				break;
-		else:
-			raise ValueError("Invalid Cluster Tree: an edge (%s: %s → %s) is not contained in any cluster"
-				% (L,X.name,Y.name) )
-
+	Cs, cluster_edges, edgemap, cluster_shapes = _find_cluster_graph(M, varname_clusters, cluster_edges, verb)
 	mus = [ cp.Variable(np.prod(shape), nonneg=True) for shape in cluster_shapes ]
+
 	ts = {}
 	ss = {}
 	
-	k = 0
 	cvx_tol_constraints = []
 	hard_constraints = []
 	cave_edges = []
@@ -809,7 +788,6 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 	nx.set_edge_attributes(Gr, 
 		{e : {'weight' : np.prod([len(M.vars[x]) for x in e[1]]) }
 			for e in Gr.edges() })
-	print(Gr.edges(data=True))
 	ab = nx.minimum_spanning_arborescence(Gr)
 	root = next(C for C,d in ab.in_degree() if d==0) # this is the root cluster
 
@@ -836,7 +814,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 
 	for it in range(max_iters):
 		if it == 0:
-			frozens = [ RJD.unif([M.vars[vn] for vn in C]) for i,C in enumerate(Cs) ] 
+			frozens = [ RJD.unif([M.vars[vn] for vn in C]) for C in Cs ] 
 		else:
 			frozens = [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)]
 
@@ -861,9 +839,9 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 
 		prob.solve(**solver_kwargs)
 
-		print('obj: ', prob.value + g(frozens), '\t\t tv distance', 
-				max( np.sum(np.absolute(mu.value-frozen.data.reshape(-1)))
-				  for mu,frozen in zip(mus, frozens))  )
+		if verb: print('obj: ', prob.value + g(frozens), '\t\t tv distance', 
+				        max( np.sum(np.absolute(mu.value-frozen.data.reshape(-1)))
+				            for mu,frozen in zip(mus, frozens))  )
 
 		if(prob.value == prev_val) or all(
 			np.sum(np.absolute(mu.value-frozen.data.reshape(-1))) <= 1E-6
@@ -884,28 +862,22 @@ def _cvx_opt_direct(M, gamma=1, **solver_kwargs):
 	It is just here to show that direct optimization of the
 	objective cannot be done even with the built-in dccp algorithm.
 	"""
-	n = np.prod(M.dshape)
-	mu = cp.Variable(n, nonneg=True)
+	mu = cp.Variable(np.prod(M.dshape), nonneg=True)
 	objective = 0
 	
 	for L,β,α,X,Y,p in M.edges("l,β,α,X,Y,P"):
 		if 'π' not in L:
 			muXY = _marginalize(mu, M.dshape, M._idxs(X,Y))
 			muX = _marginalize(mu, M.dshape, M._idxs(X))	
+
 			## next calculation might be buggy..
 			muX_broadcast2XY = cp.vec(_n_copies(muX, len(Y)) )
 			muXpY_X = cp.vec(_cpd2joint(p, muX))
-			print(muXY.shape, muX.shape, muX_broadcast2XY.shape, muXpY_X.shape, 
-			cp.log(muXY).shape, cp.log(muXpY_X).shape)
-			print((cp.log(muXY) - cp.log(muXpY_X)).shape)
-			print( muXY.shape )
 
 			objective += β * cp.sum( cp.multiply(muXY,  cp.log(muXY) - cp.log(muXpY_X) ) )
 			objective -= α * cp.sum( cp.multiply(muXY, cp.log(muXY) - cp.log(muX_broadcast2XY)))
 
-	prob = cp.Problem(
-		cp.Minimize( objective),
-		[sum(mu) == 1]
-	)
+	prob = cp.Problem( cp.Minimize( objective),	[sum(mu) == 1] )
 	prob.solve(**solver_kwargs) 
+
 	return RJD(mu.value, M.varlist)
