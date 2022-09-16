@@ -232,7 +232,8 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 # like cvx_opt_joint, but in parallel over all clusters, with consistency constraints
 def cvx_opt_clusters( M : PDG, also_idef=True, 
 		varname_clusters = None, cluster_edges = None,
-		dry_run=False, **solver_kwargs) :
+		# dry_run=False, 
+		**solver_kwargs) :
 	""" Given a pdg `M`, do a convex optimization to find (a compact representation of) a 
 	joint distribution which minimizes Inc. This is done by only tracking the cluster marginals
 	along a cluster tree; it can be shown that any minimizer of Inc for \gamma > 0 must be of
@@ -242,7 +243,7 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	"""
 	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
 
-	Cs, cluster_edges, edgemap, cluster_shapes = _find_cluster_graph(varname_clusters, cluster_edges, verb) 
+	Cs, cluster_edges, edgemap, cluster_shapes = _find_cluster_graph(M, varname_clusters, cluster_edges, verb) 
 	m = len(Cs)
 
 	mus = [ cp.Variable(np.prod(shape), nonneg=True) for shape in cluster_shapes]
@@ -252,7 +253,7 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	for L,X,Y,p in M.edges("l,X,Y,P"):
 		if 'π' not in L:
 			i = edgemap[L]
-			C = varname_clusters[i]            
+			C = Cs[i]            
 			
 			idxs_XY = [C.index(N.name) for N in (X&Y).atoms]
 			idxs_X = [C.index(N.name) for N in X.atoms]
@@ -262,8 +263,8 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 			tol_constraints.append(ExpCone(-ts[L], xymarginal, 
 			   cp.vec(_cpd2joint(p,_marginalize(mus[i], cluster_shapes[i], idxs_X)) )) )
 
-			if dry_run:
-				break
+			# if dry_run:
+			# 	break
 
 	local_marg_constraints = []
 	
@@ -287,8 +288,8 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 			# + [mus[i] >= 0 for i in range(m)] ## subsumed by nonneg = True
 			+ tol_constraints + local_marg_constraints )
 
-	if dry_run:
-		return prob
+	# if dry_run:
+	# 	return prob
 
 	prob.solve(**solver_kwargs)    
 	
@@ -354,7 +355,8 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 						] 
 			)
 
-			correction_elts = [1] * mus[i].size
+			# correction_elts = [1] * mus[i].size
+			correction = np.ones(mus[i].shape)
 			for j in range(m):
 				# if i != j: # for use with square roots
 				# if i < j: # only single-count corrections?
@@ -366,38 +368,27 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 					idxs = [k for k,vn in enumerate(Cs[i]) if vn in common]
 					if len(common) > 0:
 						new_term = _marginalize(mus[i], cluster_shapes[i], idxs)
-						# new_term = cp.sqrt(_marginalize(mus[i], cluster_shapes[i], idxs))
 						
 						# want correction *= new_term, but no broadcasting b/c indices lost
 						# ... sooo instead ....
 						
-						#(a.0) pre-compute the shape of the shared sepset 
-						newterm_vshape = tuple(cluster_shapes[i][k] for k in idxs)
-						for w,mu_w in enumerate(mus[i]):
-							#1. unravel the joint cluster i's world w into a value for each variable
-							v_idx = np.unravel_index(w, cluster_shapes[i])
-							#2. figure out what the appropriate flattened index into the
-							# marginal probability (new_term) should be. 
-							idx = np.ravel_multi_index(tuple(v_idx[j] for j in idxs), newterm_vshape)
-							correction_elts[w] *= new_term[idx]
-						# (b.0) prepcompute the shape of shared subset
+						##(a.0) pre-compute the shape of the shared sepset 
 						# newterm_vshape = tuple(cluster_shapes[i][k] for k in idxs)
-						# II  = np.arange(mus[i].size)
-						# v_idx = np.unravel_index(II , cluster_shapes[i])
-						# idx = np.ravel_multi_index(tuple(v_idx[k] for k in idxs), newterm_vshape)
-						# correction_elts
+						# for w,mu_w in enumerate(mus[i]):
+						# 	##(a.1) unravel the joint cluster i's world w into a value for each variable
+						# 	v_idx = np.unravel_index(w, cluster_shapes[i])
+						# 	##(a.2) figure out what the appropriate flattened index into the
+						# 	# marginal probability (new_term) should be. 
+						# 	idx = np.ravel_multi_index(tuple(v_idx[j] for j in idxs), newterm_vshape)
+						# 	correction_elts[w] *= new_term[idx]
+							
+						## (b.0) prepcompute the shape of shared subset
+						newterm_vshape = tuple(cluster_shapes[i][k] for k in idxs)
+						v_idx = np.unravel_index(np.arange(mus[i].size) , cluster_shapes[i])
+						idx = np.ravel_multi_index(tuple(v_idx[k] for k in idxs), newterm_vshape)
+						correction = cp.multiply(correction, new_term[idx])
 
-						## the below is taken from marginalize for context.
-						# II = np.arange(mu.size)
-						# v_idx = np.unravel_index(II, shape)
-						# idx = np.ravel_multi_index(tuple(v_idx[j] for j in IDXs), postshape)
-						# # print('\n\t',end='')
-						# for i in range(len(elts)):
-						# 	print('\t[%d / %d] components' % (i,len(elts)),end='\r',flush=True)
-						# 	idxs_i = np.nonzero((idx==i))
-						# 	elts[i] = cp.sum(mu[idxs_i])
-
-			correction = cp.hstack(correction_elts)
+			# correction = cp.hstack(correction_elts)
 
 			tol_constraints.append(ExpCone(
 				-tts[i],
@@ -802,6 +793,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		ent_tol_constraints.append(ExpCone(
 			-tts_ent[j],
 			mus[j],
+			## TODO FIXME THIS DUP IS VERY SLOW
 			_dup2shape(common_marg, cluster_shapes[j], j_common_idxs)
 		))
 

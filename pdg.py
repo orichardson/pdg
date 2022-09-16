@@ -197,7 +197,8 @@ class PDG:
 			yield cpd
 
 	def _get_edgekey(self, spec):
-		label = None
+		gn = tn = label = None
+		
 		# print(spec)	
 		if isinstance(spec, ConditionRequest):
 			# print(spec.given.name, spec.target.name)
@@ -209,9 +210,31 @@ class PDG:
 			if len(spec) == 3:
 				label = spec[2]
 		elif type(spec) is str:
-			for xyl in self.edges("Xn,Yn,l"):
-				if ','.join(xyl) in spec or spec == xyl[-1]:
-					gn, tn, label = xyl
+			if spec.indexOf("|") > 0:
+				specY, specX = map(str.strip, spec.split('|'))
+			elif spec.indexOf("->") > 0:
+				specX, specY = map(str.strip, spec.split('->'))
+
+			for X,Y,l in self.edges("X,Y,l"):
+				if spec == ','.join(X.name,Y.name,l): # could be (src, tgt, l)
+					return X.name,Y.name,l
+				
+				if spec == l: # could just be label name
+					if label is None: 
+						gn, tn, label = X.name, Y.name, l
+					else: raise ValueError("Spec is not unique! Matching edges: ", 
+							["%s : %s -> %s " % lxy for lxy in self.edges("l,Xn,Yn") if lxy[0] == spec])
+				
+				elif specX is not None and specY is not None and \
+					all(a.name in specX for a in X.atoms) and all(a.name in specY for a in Y.atoms):
+						if gn is None and tn is None:
+							gn,tn = X.name, Y.name
+						else: raise ValueError(f"Couldn't uniquely decide on edge:  ({gn}->{tn})  vs ({X.name}->{Y.name})")
+			else:
+				# print("all edges: ", [','.join(xyl) for xyl in self.edges("Xn,Yn,l")])
+				raise ValueError("no edge matches string specification \"%s\""%spec)
+		else:
+			raise ValueError("did not understand edge spec \"%s\"---not a conditionrequest, tuple, or string."%repr(spec))
 		
 		if label == None:
 			if len(self.graph[gn][tn]) == 1:
@@ -237,7 +260,7 @@ class PDG:
 		self.edgedata[self._get_edgekey(edge_spec)]['alpha'] = α
 	
 	def set_beta(self, edge_spec, β):
-		self.edgedata[self._get_edgekey(edge_spec)]['alpha'] = β
+		self.edgedata[self._get_edgekey(edge_spec)]['beta'] = β
 		
 
 	def update_all_weights(self, a=None, b=None):
