@@ -145,7 +145,7 @@ def approx_score(pdg, F : FactorGraph, γ):
 
 
 def opt_dist(pdg, gamma=None,
-		extraTemp = 1E-3, iters=350,
+		extraTemp = 0, iters=350,
 		ret_losses:bool = False,
 		ret_iterates:bool = False,
 		representation:str = 'simplex', # or dist or softmax

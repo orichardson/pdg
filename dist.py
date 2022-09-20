@@ -410,6 +410,13 @@ class RawJointDist(Dist):
 		if isinstance(vars, rv.Variable) \
 			or isinstance(vars, rv.ConditionRequest) or vars is ...:
 				vars = [vars]
+		
+		if isinstance(vars, str):
+			if '|' in vars:
+				t, g = vars.split("|")
+				vars = [*t.split(' '), '|', g.split(' ')]
+			else:
+				vars = vars.split(' ')
 
 		targetvars = []
 		conditionvars = list(given) if given else []
@@ -417,17 +424,24 @@ class RawJointDist(Dist):
 		mode = "join"
 
 		for var in vars:
-			if isinstance(var, rv.ConditionRequest):
+			if isinstance(var, rv.ConditionRequest) or var == '|':
 				if mode == "condition":
 					raise ValueError("Only one bar is allowed to condition")
-
+				
 				mode = "condition"
-				targetvars.append(var.target)
-				conditionvars.append(var.given)
+
+				if isinstance(var, rv.ConditionRequest):
+					targetvars.append(var.target)
+					conditionvars.append(var.given)
 			else:
 				l = (conditionvars if mode == "condition" else targetvars)
 				if isinstance(var, rv.Variable):
 					l.append(var)
+				elif isinstance(var, str):
+					try:
+						l.append(next(v for v in self.varlist if v.name == var))
+					except StopIteration:
+						raise ValueError("No variable named \"%s\" in dist"%var)
 					# if mode == "condition":
 					#     conditionvars.append(var)
 					# elif mode == "join":
