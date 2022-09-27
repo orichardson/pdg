@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 from abc import ABC
-from typing import Type, TypeVar# , Union, Mapping
+from typing import FrozenSet, List, Type, TypeVar# , Union, Mapping
 import collections
 
 from functools import reduce
@@ -14,6 +14,7 @@ Var = rv.Variable
 
 import warnings
 import itertools
+import re
 	
 import seaborn as sns
 greens = sns.light_palette("green", as_cmap=True)
@@ -26,10 +27,12 @@ except ImportError:
 
 
 # recipe from https://docs.python.org/2.7/library/itertools.html#recipes
-def powerset(iterable):
+def powerset(iterable, reverse=False):
 	"powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
 	s = list(iterable)
-	return itertools.chain.from_iterable(itertools.combinations(s, r) for r in range(len(s)+1))
+	return itertools.chain.from_iterable(itertools.combinations(s, r) 
+		for r in ( reversed(range(len(s)+1)) if reverse else range(len(s)+1))
+	)
 
 
 def z_mult(joint, masked):
@@ -59,6 +62,8 @@ except ImportError:
 
 
 def _idxs(varlist, *varis, multi=False):
+	""" Given a list `varlist` of atomic Variables, returns a list of indices
+		reflecting all components of the arguments that follow. """
 	idxs = []
 	for V in varis:
 		##old version: split doesn't work well.
@@ -70,8 +75,8 @@ def _idxs(varlist, *varis, multi=False):
 		for a in V.atoms:
 			try:
 				i = varlist.index(a)
-			except:
-				print("varlist: ", varlist)
+			except ValueError:
+				# print("varlist: ", varlist)
 				raise
 			if multi or (i not in idxs):
 				idxs.append(i)
@@ -384,6 +389,19 @@ class RawJointDist(Dist):
 		narr = utils.nparray_of
 		return D_KL(narr(self.data), narr(other.data))
 
+	def __len__(self):
+		if self._torch:
+			return self.data.numel()
+
+		return self.data.size
+
+	def __contains__(self, var):
+		if isinstance(var, Var):
+			return var in self.varlist or all(
+				a in self.varlist for a in var.atoms)
+		
+		elif isinstance(var, str):
+			return all( any(a.strip() == v.name for v in self.varlist) for a in var.split(","))
 
 	def __repr__(self):
 		# varstrs = [v.name+"%d"%len(v) for v in self.varlist]
@@ -414,9 +432,9 @@ class RawJointDist(Dist):
 		if isinstance(vars, str):
 			if '|' in vars:
 				t, g = vars.split("|")
-				vars = [*t.split(' '), '|', g.split(' ')]
+				vars = [*re.split(r'[\s,]', t), '|', *re.split(r'[\s,]', g)]
 			else:
-				vars = vars.split(' ')
+				vars = re.split(r'[\s,]', vars)
 
 		targetvars = []
 		conditionvars = list(given) if given else []
@@ -438,6 +456,7 @@ class RawJointDist(Dist):
 				if isinstance(var, rv.Variable):
 					l.append(var)
 				elif isinstance(var, str):
+					if len(var) == 0 : continue
 					try:
 						l.append(next(v for v in self.varlist if v.name == var))
 					except StopIteration:
@@ -499,6 +518,8 @@ class RawJointDist(Dist):
 				joint_expanded = self.data
 			else:
 				joint_expanded = self.data.sum(dim=neitheridx, keepdim=True)
+
+			## TODO actually make this expanded.
 		else:
 			# sum across anything not in the index
 			joint = self.data.sum(axis=tuple(neitheridx) )
@@ -512,7 +533,7 @@ class RawJointDist(Dist):
 		if len(idxc) > 0:
 			if self._torch:
 				normalizer = joint_expanded.sum(dim=idxt, keepdim=True)
-				matrix = (joint_expanded / normalizer).permute(IDX).squeeze()
+				matrix = (joint_expanded / normalizer).permute(IDX+neitheridx).squeeze()
 				# The torch version still has to reorder the columns...
 				# matrix = _matrix.
 			else:            
@@ -532,7 +553,7 @@ class RawJointDist(Dist):
 
 				return CPT.from_matrix(vfrom,vto, mat2,multi=False)
 		else:
-			matrix = joint_expanded.permute(IDX).squeeze() if self._torch else joint_expanded
+			matrix = joint_expanded.permute(IDX+neitheridx).squeeze() if self._torch else joint_expanded
 			
 			# return joint_expanded
 			if query_mode == "ndarray":
@@ -550,7 +571,7 @@ class RawJointDist(Dist):
 	def prob_matrix(self, *vars, given=None):
 		""" A global, less user-friendly version of
 		conditional_marginal(), which keeps indices for broadcasting.
-		Does not handle duplicate dimensions. """
+		TODO: Does not handle duplicate dimensions yet! """
 		tarvars, cndvars = self._process_vars(vars, given=given)
 		# print([t.name for t in tarvars], "|", [c.name for c in cndvars])
 		idxt = self._idxs(*tarvars)
@@ -594,14 +615,8 @@ class RawJointDist(Dist):
 		## The expanded version looks like this, but is
 		## a bit slower and not really simpler.
 		# collapsed = self.prob_matrix(vars)
-		# surprise = - np.ma.log( collapsed ) / np.log(base)
-		# E_surprise = surprise.filled(0) * self.data
-		# return E_surprise.sum()
+		# surprise = - np.ma.log( collapsed ) / np.log(base)		raise NotImplemented
 
-	def I(self, *vars, given=None):
-		tarvars, cndvars = self._process_vars(vars, given)
-
-		sum = 0
 		# n = len(tarvars)
 
 		for s in powerset(tarvars):
@@ -655,90 +670,134 @@ class RawJointDist(Dist):
 		return RawJointDist(data / np.sum(data), varlist)
 
 
-#
-# class CoreJointDist(RawJointDist):
-#     def __init__(self, data, varlist):
-#
-#         self.redvars = [v for v in varlist if '×' in v.name]
-#         self.ghostvars = [v for v in varlist if '×' in v.name]
-#
-#         self.rvlookup = {v.name: v for v in self.redvars}
-#
-#         missing = [n for v in self.ghostvars for n in v.name.split('×') if n not in self.redvars]
-#         assert len(missing)==0, "Missing Components: "+repr(missing)
-#
-#         super().__init__(self, data, self.redvars)
-#
-#     def vsplit(self, *vars):
-#         for V in vars:
-#             for v in V.name.split('×'):
-#                 yield self.rvlookup[v]
-#
-#     def _process_vars(self, vars, given=None):
-#         if vars is ...:
-#             vars = self.redvars
-#
-#         if isinstance(vars, rv.Variable) \
-#             or isinstance(vars, rv.ConditionRequest):# or vars is ...:
-#                 vars = [vars]
-#
-#         targetvars = []
-#         conditionvars = list(given) if given else []
-#
-#         mode = "join"
-#
-#         for var in vars:
-#             if isinstance(var, rv.ConditionRequest):
-#                 if mode == "condition":
-#                     raise ValueError("Only one bar is allowed to condition")
-#
-#                 mode = "condition"
-#                 targetvars.append(var.target)
-#                 conditionvars.append(var.given)
-#             else:
-#                 l = (conditionvars if mode == "condition" else targetvars)
-#                 if isinstance(var, rv.Variable):
-#                     l.append(*self.vsplit(var))
-#                 elif var is ...:
-#                     l.extend(v for v in self.varlist if v not in l)
-#                 else:
-#                     raise ValueError("Could not interpret ",var," as a variable")
-#
-#         return targetvars, conditionvars
-#
-	# def _idxs(self, var):
-	#     try:
-	#         return self.varlist.index(var)
-	#     except ValueError:
-	#         raise ValueError("The queried varable", var, " is not part of this joint distribution")
+def _key(rjd : RawJointDist) -> FrozenSet:
+	"""turns RawJointDist's variable list into a hashable key""" 
+	return frozenset([V.name for V in rjd.varlist])
 
-	# def broadcast(self, cpt, vfrom=None, vto=None) -> np.array:
-	#     """ returns its argument, but shaped
-	#     so that it broadcasts properly (e.g., for taking expectations) in this
-	#     distribution. For example, if the var list is [A, B, C, D], the cpt
-	#     B -> D would be broadcast to shape [1, 2, 1, 3] if |B| = 2 and |D| =3.
-	#
-	#     Parameters
-	#     ----
-	#     > cpt: the argument to be broadcast
-	#     > vfrom,vto: the attached variables (supply only if cpt does not have this data)
-	#     """
-	#     if vfrom is None: vfrom = cpt.nfrom
-	#     if vto is None: vto = cpt.nto
-	#
-	#     idxf = self.varlist.index(vfrom)
-	#     idxt = self.varlist.index(vto)
-	#
-	#     shape = [1] * len(self.varlist)
-	#     shape[idxf] = len(self.varlist[idxf])
-	#     shape[idxt] = len(self.varlist[idxt])
-	#
-	#     # print(f,'->', t,'\t',shape)
-	#     # assume cpd is a CPT class..
-	#     # but we don't necessarily want to do this in general
-	#
-	#     cpt_mat = cpt.to_numpy() if isinstance(cpt, pd.DataFrame) else cpt
-	#     if idxt < idxf:
-	#         cpt_mat = cpt_mat.T
-	#
-	#     return cpt_mat.reshape(*shape)
+class ClusterDist(Dist):
+	def __init__(self, rjds : List[RawJointDist]):
+		# self.dists = { _key(rjd) : rjd for rjd in rjds }
+		# self.dists = 
+		self.dists = rjds # a list of RawJointDists
+		self.lookup = { _key(rjd) : i for i,rjd in enumerate(rjds) }
+
+		# self.keys_big2small = sorted(
+		# 	(frozenset([V.name for V in rjd.varlist]) for rjd in rjds),
+		# 	key= lambda s: 
+		# )
+
+
+		## TODO ASSERT ALL MARGINALS ARE THE SAME
+		## TODO ASSERT THAT:
+		## if C1 \cap C2 \
+
+	@property
+	def _torch(self):
+		return all(rjd._torch for rjd in self.dists)
+
+	def _idxs(self, *varis, multi=False):
+		return _idxs(self.varlist, *varis, multi=multi)
+	
+	# def __get_item__(): raise NotImplemented
+
+	def conditional_marginal(self, vars, query_mode=None):
+		""" 
+		For now, only needs to handle the case where all variables fall within
+		one distribution or the other. 
+		"""
+
+		for rjd in self.dists:
+			try:
+				## lol I don't even need to check. I can just try to do the thing.
+				# tarvars, cndvars = rjd._process_vars(vars)
+				# if not all(v in rjd for v in itertools.chain(tarvars,cndvars)):
+				# 	continue
+
+				return rjd.conditional_marginal(vars, query_mode=query_mode)
+
+			except ValueError:
+				continue # this isn't the one.
+
+
+		raise NotImplementedError("not all variables are in the same cluster; this doesn't work yet.")
+
+
+	# returns the marginal on a variable
+	def __getitem__(self, vars):
+		return self.conditional_marginal(vars)
+
+
+	def prob_matrix(self, *vars, given=None):
+		""" A global, less user-friendly version of
+		conditional_marginal(), which keeps indices for broadcasting.
+		Does not handle duplicate dimensions. """
+		for rjd in self.dists:
+			try: return rjd.prob_matrix(*vars, given=given)
+			except ValueError: continue # this isn't the one.
+
+		raise NotImplementedError("not all variables are in the same cluster;"+
+			" this doesn't work yet.")
+		# tarvars, cndvars = self._process_vars(vars, given=given)
+		# # print([t.name for t in tarvars], "|", [c.name for c in cndvars])
+		# idxt = self._idxs(*tarvars)
+		# idxc = self._idxs(*cndvars)
+		# # print("idxt: ", idxt, " \tidxc", idxc)
+		# IDX = idxt + idxc
+
+		# N = len(self.varlist)
+		# dim_nocond = tuple(i for i in range(N) if i not in idxc )
+		# dim_neither = tuple(i for i in range(N) if i not in IDX ) 
+		# # want tosum across anything not in the index
+		
+		# if self._torch: # wow, torch's nonparamatricity of sum for dim=[] is crazy
+		# 	collapsed = self.data.sum(dim=dim_neither,keepdim=True) if  len(dim_neither) \
+		# 		else self.data
+
+		# else: collapsed = self.data.sum(axis=dim_neither, keepdims=True)
+
+		# if len(cndvars) > 0:
+		# 	if self._torch: # nans are correct, but destroy the gradient. So we set them equal to zero.
+		# 		denom = collapsed.sum(dim=dim_nocond, keepdim=True)
+		# 		collapsed = torch.divide(collapsed, torch.where(denom==0, 1., denom))
+		# 		# if denominator is zero, so is numerator, so at least this is a valid answer
+		# 	else:
+		# 		collapsed = np.ma.divide(collapsed, collapsed.sum(axis=dim_nocond, keepdims=True))
+
+		# return collapsed
+		
+	def H(self, *vars, base=2, given=None):
+		if vars == (Ellipsis,):
+			## comptues the Kikuchi approximation.
+
+			ent = 0.
+			# c = { frozenset(range(len(self.dists))) : 1 } # overcounting numbers
+			c = {}
+
+			# for S in powerset(self.dists, reverse=True):
+			for S in powerset(range(len(self.dists)), reverse=False):
+				if len(S) == 0: continue
+
+				common_names = set.intersection(*[
+					set([v.name for v in self.dists[i].varlist])  for i in S])
+
+				if len(common_names) == 0 \
+						or frozenset(common_names) in c: 
+					continue
+				
+				# overcount_S = 1 - sum(cr for r,cr in c.items() if r.issubset(S))
+				# c[frozenset(S)] = overcount_S
+				overcount_S = 1 - sum(cr for r,cr in c.items() if r.issuperset(common_names))
+				c[frozenset(common_names)] = overcount_S
+				
+				ent += overcount_S * self.dists[S[0]].H(*common_names)
+			
+			# print(c)
+			return ent
+
+
+		for rjd in self.dists:
+			try: return rjd.H(*vars, given=given)
+			except ValueError: continue # this isn't the one.
+
+		raise NotImplementedError("not all variables are in the same cluster;"+
+			" this doesn't work yet.")

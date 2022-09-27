@@ -210,13 +210,13 @@ class PDG:
 			if len(spec) == 3:
 				label = spec[2]
 		elif type(spec) is str:
-			if spec.indexOf("|") > 0:
+			if spec.find("|") > 0:
 				specY, specX = map(str.strip, spec.split('|'))
-			elif spec.indexOf("->") > 0:
+			elif spec.find("->") > 0:
 				specX, specY = map(str.strip, spec.split('->'))
 
 			for X,Y,l in self.edges("X,Y,l"):
-				if spec == ','.join(X.name,Y.name,l): # could be (src, tgt, l)
+				if spec == ','.join((X.name,Y.name,l)): # could be (src, tgt, l)
 					return X.name,Y.name,l
 				
 				if spec == l: # could just be label name
@@ -229,6 +229,7 @@ class PDG:
 					all(a.name in specX for a in X.atoms) and all(a.name in specY for a in Y.atoms):
 						if gn is None and tn is None:
 							gn,tn = X.name, Y.name
+							break
 						else: raise ValueError(f"Couldn't uniquely decide on edge:  ({gn}->{tn})  vs ({X.name}->{Y.name})")
 			else:
 				# print("all edges: ", [','.join(xyl) for xyl in self.edges("Xn,Yn,l")])
@@ -768,7 +769,20 @@ class PDG:
 		return thescore.real if thescore.imag == 0 else thescore
 
 	# TODO: Not sure if these are working properly in the presence of incomplete cpts..
-	def Inc(self, p, ed_vector=False):
+	def Inc_ptwise(self, p, ed_vector=False):
+		"""
+		Used to be the implementation of Inc. 
+		Computes a joint distribution of shape (m, *dshape),
+		which might somehow be interesting, but then then sums over remaining axes,
+		so it still doesn't expose this to the user.
+
+		SOme downsides:
+		 - doesn't work for cluster distributions and 
+		 - wasn't even implemented for torch. 
+		 - returned a complex number, confusingly.
+
+		So it's been replaced by `Inc` for the most part.
+		""" 
 		if p._torch:
 			raise NotImplementedError()
 		
@@ -786,7 +800,7 @@ class PDG:
 			return Incv.sum(axis=tuple(range(1, Incv.ndim)))
 		return Incv.sum()
 
-	def IDef(self, p, ed_vector=False):
+	def IDef_old(self, p, ed_vector=False):
 		Prp = p.prob_matrix
 
 		if p._torch and (ed_vector is False):  # if you insist on grads...
@@ -815,6 +829,60 @@ class PDG:
 			if ed_vector:
 				return IDefv.sum(axis=tuple(range(1, IDefv.ndim)))
 			return IDefv.sum()
+
+
+	def Inc(self, mu, ed_vector=False):
+		""" New computation of Inc that works for torch and ClusterDists. """ 
+		
+		Pr = lambda *query : mu.conditional_marginal(query, query_mode="ndarray")
+		# n_cpds = len(self.edgedata) # of edges
+		# Incv = np.zeros((len(self.edgedata),*p.shape),dtype=np.complex_)
+		m = len(self.edgedata)
+		if mu._torch:
+			inc = torch.zeros(m) if ed_vector else torch.tensor(0.)
+		else: inc = np.zeros(m) if ed_vector else 0.
+
+		for i,(X,Y,cpd_df,beta) in enumerate(self.edges("XYPβ")):
+			cpd = cpd_df.broadcast_to([Y,X])
+
+			if mu._torch:
+				claims = torch.isfinite(torch.tensor(cpd))
+				edgeinc = beta * torch.sum(Pr(Y,X) * torch.where(claims,
+					torch.log(Pr(Y|X)) - torch.log(torch.tensor(cpd)) , 0.))
+			else:
+				claims = np.isfinite(cpd)
+				edgeinc = beta * np.sum(Pr(Y,X) * (np.ma.where(claims,
+					np.ma.log(  zz1_div(Pr(Y|X), cpd) ), 0)).filled(np.inf))
+			
+			if ed_vector:
+				inc[i] = edgeinc
+			else:
+				inc += edgeinc
+		
+		return inc
+		
+	def IDef(self, mu, ed_vector=False):
+		Pr = lambda *query : mu.conditional_marginal(query, query_mode="ndarray")
+	
+		m = len(self.edgedata)
+		if mu._torch:
+			idef = torch.zeros(m) if ed_vector else torch.tensor(0.)
+		else: idef = np.zeros(m) if ed_vector else 0.
+
+		lib = torch if mu._torch else np
+
+		for i,(X,Y,α) in enumerate(self.edges("XYα")):
+			mu_yx = Pr(Y,X)
+			
+			mulogmu = (mu_yx * lib.log( lib.where(mu_yx==0, 1., Pr(Y|X))))
+			wH = - α * mulogmu.sum() # weighted entropy 
+
+			if ed_vector: idef[i] = wH
+			else: idef +=  wH
+
+		idef = idef/np.log(2) -  mu.H(...)
+		return idef 
+		
 
 	####### SEMANTICS 3 ##########
 	def optimize_score(self, gamma, repr="atomic", store_iters=False, **solver_kwargs ):

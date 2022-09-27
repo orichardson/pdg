@@ -100,7 +100,7 @@ class Variable(set, metaclass=utils.CopiedType):
         return ConditionRequest(target=self,given=other)
 
     def __eq__(self, other):
-        return set.__eq__(self, other) and (
+        return isinstance(other, Variable) and set.__eq__(self, other) and (
                 self.name == other.name if hasattr(self,"name") else True)
 
 
