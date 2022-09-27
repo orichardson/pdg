@@ -136,10 +136,15 @@ def _find_cluster_graph(M : PDG,
 	"""
 	if varname_clusters is None:
 		if verbose: print("no clusters given; using pgmpy junction tree to find some.")
+		
+		mn = M.to_markov_net()
+		component_jtrees = [mn.subgraph(N).to_junction_tree() for N in nx.connected_components(mn)]
 
-		jtree = M.to_markov_net().to_junction_tree()
-		varname_clusters = list(jtree.nodes())
-		cluster_edges = list(jtree.edges())
+		# jtree = 
+		# varname_clusters = list(jtree.nodes())
+		# cluster_edges = list(jtree.edges())
+		varname_clusters = [N for jt in component_jtrees for N in jt.nodes() ]
+		cluster_edges = [N for jt in component_jtrees for N in jt.edges() ]
 
 		if verbose: print("FOUND: ",varname_clusters)
 
@@ -249,6 +254,10 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	mus = [ cp.Variable(np.prod(shape), nonneg=True) for shape in cluster_shapes]
 	ts = { L : cp.Variable(p.to_numpy().size) for (L,p) in M.edges("l,P") if 'π' not in L }
 	
+	if verb: 
+		print("total parameters: ", sum(m.size for m in mus), flush=True)
+		print("adding exponential cones... ", end='', flush=True)
+	
 	tol_constraints = []
 	for L,X,Y,p in M.edges("l,X,Y,P"):
 		if 'π' not in L:
@@ -265,6 +274,10 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 
 			# if dry_run:
 			# 	break
+	
+	if verb:
+		print("... done!", flush=True)
+		print("Adding local marginal constraints ... ", end='', flush=True)
 
 	local_marg_constraints = []
 	
@@ -281,7 +294,11 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 			marg_constraint = _marginalize(mus[i], cluster_shapes[i], i_idxs)\
 					== _marginalize(mus[j], cluster_shapes[j], j_idxs)
 			local_marg_constraints.append(marg_constraint)
-	
+
+	if verb:
+		print("... done!", flush=True)
+		print("Constructing problem.")
+
 	prob = cp.Problem( 
 		cp.Minimize( sum(βL * sum(ts[L]) for βL,L in M.edges("β,l") if 'π' not in L) ),
 			[sum(mus[i]) == 1 for i in range(m)]
@@ -295,6 +312,7 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	
 	fp = None
 	if also_idef:
+		if verb: print("Now beginning IDef computation")
 		# Also implement the Bethe entropy along this tree
 		old_cluster_rjds = {}
 		for i,C in enumerate(Cs):
@@ -408,11 +426,12 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 		new_prob.solve(**solver_kwargs)
 	
 	# return RJD(mu.value, M.varlist)
-	return namedtuple("ClusterPseudomarginals", ['marginals', 'value'])(
+	return namedtuple("ClusterPseudomarginals", ['marginals', 'inc','idef'])(
 		marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
 		# prob=prob,
 		# fp = fp,
-		value=prob.value)
+		inc=prob.value,
+		idef=new_prob.value)
 
 # custom implementation of the CCCP
 def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs): 
