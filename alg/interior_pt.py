@@ -220,7 +220,7 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 		# the new objective is KL( mu || prod of marginals of oldmu.Pr ^ \alpha )
 		Pr = oldmu_dist.prob_matrix
 		# fp = np.prod( [ Pr(Y|X)**α for X,Y,α in M.edges("X,Y,α")] )
-		fp = reduce(mul, [ Pr(Y|X)**α for X,Y,α in M.edges("X,Y,α")] )
+		fp = reduce(mul, [np.ones(M.dshape)] + [ Pr(Y|X)**α for X,Y,α in M.edges("X,Y,α")] )
 		tt = cp.Variable(n)
 
 		new_prob = cp.Problem(

@@ -844,7 +844,7 @@ class PDG:
 
 		for i,(X,Y,cpd_df,beta) in enumerate(self.edges("XYPβ")):
 			# cpd = cpd_df.broadcast_to([Y,X])
-			cpd = cpd_df.broadcast_to((Y&X).atoms)
+			cpd = cpd_df.broadcast_to(list((Y&X).atoms))
 
 			if mu._torch:
 				claims = torch.isfinite(torch.tensor(cpd))
