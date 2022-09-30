@@ -285,7 +285,7 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 		return self
 
 	def renormalize(self):
-		self /= np.sum(self, axis=1)[:, None]
+		self /= np.sum(self, axis=1).to_numpy()[:, None]
 		return self
 		
 	def sample(self, xval):
