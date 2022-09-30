@@ -426,15 +426,16 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 		new_prob.solve(**solver_kwargs)
 	
 	# return RJD(mu.value, M.varlist)
-	cd = ClusterDist(*[ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)])
-	return namedtuple("ClusterPseudomarginals", ['marginals', 'inc','idef'])(
+	cd = ClusterDist([ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)])
+	return namedtuple("ClusterPseudomarginals",
+			['marginals', 'cluster_dist', 'inc','idef'])(
 		marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
 		# prob=prob,
 		# fp = fp,
 		cluster_dist = cd,
 		inc=prob.value,
 		idef=new_prob.value if also_idef else M.IDef(cd)
-		)
+	)
 
 # custom implementation of the CCCP
 def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs): 

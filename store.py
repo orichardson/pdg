@@ -20,10 +20,13 @@ def valid_selector(s):
         return valid_selector(s[0])
     return not (isinstance(s,str) and s[0] == '_')
 
+# def fz(*tags, **attrs):
+#     return frozenset(chain(tags,
+#                     filter(valid_selector, attrs.items())))
+                    
 def fz(*tags, **attrs):
     return frozenset(chain(tags,
                     filter(valid_selector, attrs.items())))
-                    
                     
 def prettify_selector( sel ):
     return '; '.join(
