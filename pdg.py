@@ -843,7 +843,8 @@ class PDG:
 		else: inc = np.zeros(m) if ed_vector else 0.
 
 		for i,(X,Y,cpd_df,beta) in enumerate(self.edges("XYPβ")):
-			cpd = cpd_df.broadcast_to([Y,X])
+			# cpd = cpd_df.broadcast_to([Y,X])
+			cpd = cpd_df.broadcast_to((Y&X).atoms)
 
 			if mu._torch:
 				claims = torch.isfinite(torch.tensor(cpd))
