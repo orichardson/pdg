@@ -531,8 +531,8 @@ class RawJointDist(Dist):
 		# print(type(vars), vars, isinstance(vars, rv.Variable))
 		targetvars, conditionvars = self._process_vars(vars)
 
-		idxt = self._idxs(*targetvars)
-		idxc = self._idxs(*conditionvars)
+		idxt = self._idxs(*targetvars, multi=True)
+		idxc = self._idxs(*conditionvars, multi=True)
 		IDX = idxt + idxc
 		neitheridx =  [i for i in range(len(self.varlist)) if i not in IDX ]
 
