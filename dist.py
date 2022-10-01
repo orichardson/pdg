@@ -118,15 +118,44 @@ def broadcast(cpt, varlist,
 	cpt_mat = cpt_mat.reshape(*init_shape)
 	cpt_mat = np.einsum(cpt_mat, [*IDX,...], [*UIDX, ...])
 
-	types = [varlist.index(v) for v in varlist]
-	clones = [i != j for i,j in enumerate(types)]
+	# clones = [i != j for i,j in enumerate(types)]
+
+	clones = [varlist.index(v) != i for i,v in enumerate(varlist)]
+
+	cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
+
 	# re-expanding in case varlist has duplicates. 
 	if any(clones):
-		output = np.zeros(tuple((len(V) if types[i] in IDX else 1) for i,V in enumerate(varlist)))
-		cpt_mat_tailored = cpt_mat.reshape([ d for d,c in zip(cpt_mat.shape, clones) if not c])
-		np.einsum(output, types, UIDX + list(set(types) - set(UIDX)) )[:] = cpt_mat_tailored
+		# uvarlist = []
+		# for v in varlist:
+		# 	if v not in uvarlist: 
+		# 		uvarlist.append(v)
+		
+		# counting_types = [uvarlist.index(v) for v in varlist]
+		idx_types = [varlist.index(v) for v in varlist]
+
+		# print('idx_types', idx_types)
+		# print('counting_types', counting_types)
+
+		# print(tuple((len(V) if types[i] in IDX else 1) for i,V in enumerate(varlist)))
+		# print('outputshape', tuple((len(V) if varlist.index(V) in IDX else 1) for V in varlist))
+
+		output = np.zeros(tuple((len(V) if idx_types[i] in IDX else 1) for i,V in enumerate(varlist)))
+		# output = np.zeros( tuple((len(V) if varlist.index(V) in IDX else 1) for V in varlist))
+		# print('output shape', output.shape)
+		# print('cptmat.shape ', cpt_mat.shape)
+		# print('einsum target: ', np.einsum(output, idx_types, UIDX + list(set(idx_types) - set(UIDX)) ).shape)
+		# print('clones', clones)
+		# print('IDX: ', IDX)
+		# print("UIDX: ", UIDX)
+		# print('Candidate 1: ', tuple((len(v) if i in IDX else 1 ) for i,v in enumerate(varlist) if not clones[i]))
+		# print("Candidate 2: ", [ d for i,d in enumerate(cpt_mat.shape) if not clones[UIDX[i]]])
+
+		cpt_mat_tailored = cpt_mat.reshape( tuple((len(v) if i in IDX else 1 ) for i,v in enumerate(varlist) if not clones[i]))
+		# cpt_mat_tailored = cpt_mat.reshape([ d for d,c in zip(cpt_matbshape, clones) if not c])
+		np.einsum(output, idx_types, UIDX + list(set(idx_types) - set(UIDX)) )[:] = cpt_mat_tailored
 	else: 
-		output = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
+		output = cpt_mat
 
 	# cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
 	# return cpt_mat
