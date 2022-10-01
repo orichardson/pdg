@@ -210,6 +210,7 @@ class PDG:
 			if len(spec) == 3:
 				label = spec[2]
 		elif type(spec) is str:
+			specX = specY = None
 			if spec.find("|") > 0:
 				specY, specX = map(str.strip, spec.split('|'))
 			elif spec.find("->") > 0:

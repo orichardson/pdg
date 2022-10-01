@@ -102,27 +102,13 @@ def broadcast(cpt, varlist,
 	if vfrom is None: vfrom = cpt.nfrom
 	if vto is None: vto = cpt.nto
 
-	# idxf = self.varlist.index(vfrom)
-	# idxt = self.varlist.index(vto)
-	#
-	# shape = [1] * len(self.varlist)
-	# shape[idxf] = len(self.varlist[idxf])
-	# shape[idxt] = len(self.varlist[idxt])
-
-	# print(vfrom, vto)
-
-	# idxf,idxt = self._idxs(vfrom), self._idxs(vto)
 	IDX = _idxs(varlist, vfrom,vto,multi=True)
-	UIDX = np.unique(IDX).tolist()
+	UIDX = np.unique(IDX).tolist() # sorted also
 
 	init_shape = [1] * (len(varlist)+len(IDX)-len(UIDX))
 
 	for j,i in enumerate(IDX):
 		init_shape[j] = len(varlist[i])
-
-	# print(f,'->', t,'\t',shape)
-	# assume cpd is a CPT class..
-	# but we don't necessarily want to do this in general
 
 	cpt_mat = cpt.to_numpy() if isinstance(cpt, pd.DataFrame) else cpt
 
@@ -131,9 +117,20 @@ def broadcast(cpt, varlist,
 
 	cpt_mat = cpt_mat.reshape(*init_shape)
 	cpt_mat = np.einsum(cpt_mat, [*IDX,...], [*UIDX, ...])
-	cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
 
-	return cpt_mat
+	types = [varlist.index(v) for v in varlist]
+	clones = [i != j for i,j in enumerate(types)]
+	# re-expanding in case varlist has duplicates. 
+	if any(clones):
+		output = np.zeros(tuple((len(V) if types[i] in IDX else 1) for i,V in enumerate(varlist)))
+		cpt_mat_tailored = cpt_mat.reshape([ d for d,c in zip(cpt_mat.shape, clones) if not c])
+		np.einsum(output, types, UIDX + list(set(types) - set(UIDX)) )[:] = cpt_mat_tailored
+	else: 
+		output = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
+
+	# cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
+	# return cpt_mat
+	return output
 
 
 
