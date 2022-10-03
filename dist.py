@@ -36,7 +36,7 @@ def powerset(iterable, reverse=False):
 
 
 def z_mult(joint, masked):
-	""" multiply assuming zeros override nans; keep mask."""
+	""" multiply assuming zeros override nans; keep mask otherwise"""
 	return np.ma.where(joint == 0, 0, joint * masked)
 
 def zz1_div(top, bot):
@@ -567,7 +567,8 @@ class RawJointDist(Dist):
 				normalizer = joint_expanded.sum(axis=tuple(i for i in range(len(idxt))), keepdims=True)
 				#if idxt is last...
 				# normalizer = joint_expanded.sum(axis=tuple(-i-1 for i in range(len(idxt))), keepdims=True)
-				matrix = joint_expanded / normalizer;
+				with np.errstate(divide='ignore',invalid='ignore'):
+					matrix = joint_expanded / normalizer
 
 			if query_mode == "ndarray":
 				return matrix

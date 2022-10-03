@@ -26,9 +26,9 @@ try:
 	LOGZERO=1E12
 	twhere,tlog = torch.where, torch.log
 	# zlog = lambda t : twhere(t==0, 0., tlog(twhere(t==0, LOGZERO, t))) 
-	def zmul(prob, maybe_nan):
-		# return twhere(prob == 0, 0., twhere(torch.isnan(maybe_nan), 0., maybe_nan) * prob)
+	def tzmul(prob, maybe_nan):
 		return twhere(prob == 0, 0., twhere(torch.isnan(maybe_nan), 0., maybe_nan) * prob)   
+
 except ImportError:
 	print("No torch; only numpy backend")
 try:
@@ -849,12 +849,17 @@ class PDG:
 
 			if mu._torch:
 				claims = torch.isfinite(torch.tensor(cpd))
-				edgeinc = beta * torch.sum(Pr(Y,X) * torch.where(claims,
-					torch.log(Pr(Y|X)) - torch.log(torch.tensor(cpd)) , 0.))
+				# edgeinc = beta * torch.sum(Pr(Y,X) * torch.where(claims,
+				# 	torch.log(Pr(Y|X)) - torch.log(torch.tensor(cpd)) , 0.))
+				edgeinc = beta * torch.sum( tzmul( Pr(Y,X), torch.where(claims,
+					torch.log(Pr(Y|X)) - torch.log(torch.tensor(cpd)) , 0.)))
 			else:
 				claims = np.isfinite(cpd)
-				edgeinc = beta * np.sum(Pr(Y,X) * (np.ma.where(claims,
-					np.ma.log(  zz1_div(Pr(Y|X), cpd) ), 0)).filled(np.inf))
+				# edgeinc = beta * np.sum(Pr(Y,X) * (np.ma.where(claims,
+				# 	np.ma.log(  zz1_div(Pr(Y|X), cpd) ), 0)).filled(np.inf))
+				edgeinc = beta * z_mult(Pr(Y,X),
+						np.ma.where(claims, np.ma.log(zz1_div(Pr(Y|X), cpd)), 0)
+					).filled(np.inf).sum()  
 			
 			if ed_vector:
 				inc[i] = edgeinc
