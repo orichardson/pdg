@@ -44,11 +44,14 @@ class Labeler:
 	def __init__(self, basenames=['p']):
 		self._counter = 0
 		self._basenames = basenames
-		self._edge_specific_counts = collections.defaultdict(lambda: 0)
-		# self._edge_specific_counts = {}
+		# self._edge_specific_counts = collections.defaultdict(lambda: 0)
+		self._edge_specific_counts = {}
 
 	def fresh(self, vfrom, vto, **ctxt):
 		self._counter += 1
+
+		if (vfrom, vto) not in self._edge_specific_counts:
+			self._edge_specific_counts[(vfrom,vto)] = 0
 		self._edge_specific_counts[(vfrom,vto)] += 1
 		
 		return self._basenames[0] + str(self._counter)
@@ -122,17 +125,18 @@ class PDG:
 				return Variable.product(*objects) if len(objects) != 1 else objects[0]
 
 	
-	def __getstate__(self):
-		state = self.__dict__.copy()
-		del state['labeler']
-		state['_labeler_dict'] = self.labeler.__dict__
-		return state
+	## No longer necessary??
+	# def __getstate__(self):
+	# 	state = self.__dict__.copy()
+	# 	del state['labeler']
+	# 	state['_labeler_dict'] = self.labeler.__dict__
+	# 	return state
 	
-	def __setstate__(self, state):
-		self.__dict__ = state
-		self.labeler = Labeler()
-		self.labeler.__dict__  = state['_labeler_dict']
-		del self.__dict__['_labeler_dict']
+	# def __setstate__(self, state):
+	# 	self.__dict__ = state
+	# 	self.labeler = Labeler()
+	# 	self.labeler.__dict__  = state['_labeler_dict']
+	# 	del self.__dict__['_labeler_dict']
 
 
 	# generates <node_name_from, node_name_to, edge_label>
