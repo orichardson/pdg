@@ -176,8 +176,8 @@ def opt_dist(pdg, gamma=None,
 			nnμdata = torch.exp(raw_data)
 			total = nnμdata.sum() 
 			return ( nnμdata / total), constraint_penalty*(total-1)**2 
-	elif representation in ['softclip+normalize', 'softmax+normalize', 'soft simplex']:
-		representation = 'soft simplex'
+	elif representation in ['softclip+normalize', 'softmax+normalize', 'soft-simplex', 'soft simplex']:
+		representation = 'soft-simplex'
 		temp = [ 1E-3 ]
 		def todistrib(raw_data):
 			# temp = 1E-3
