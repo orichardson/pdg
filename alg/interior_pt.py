@@ -867,8 +867,11 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 
 		prev_val = prob.value
 
-	return namedtuple("ClusterPseudomarginals", ['marginals', 'value'])(
+
+	cd = ClusterDist([ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)])
+	return namedtuple("ClusterPseudomarginals", ['marginals', "cluster_dist", 'value'])(
 		marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
+		cluster_dist = cd,
 		value=prob.value)
 
 
