@@ -18,6 +18,8 @@ def zmul(prob, maybe_nan):
 # except ImportError:
 # 	print("No torch; only numpy backend")
 
+Optims = {'adam' : torch.optim.Adam, 'sgd' : torch.optim.SGD, 
+		'asgd' : torch.optim.ASGD, 'lbfgs' : torch.optim.LBFGS}
 
 
 def torch_score_alt(pdg, μ : RJD, γ):
@@ -288,7 +290,7 @@ def opt_dist(pdg, gamma=None,
 	return (μ,)+to_ret if len(to_ret) else μ
 
 
-def optimize_via_FGs(pdg, γ=0, init=None, iters=1000) -> RJD:
+def optimize_via_FGs(pdg, gamma=0, init=None, iters=1000) -> RJD:
 	"""
 	Cover PDG with factors;
 
@@ -317,7 +319,7 @@ def optimize_via_FGs(pdg, γ=0, init=None, iters=1000) -> RJD:
 		μ.data = pf / pf.sum()
 		# μ.data = factors[0]
 		# print(μ.data.shape)
-		loss = pdg.torch_score(μ, γ)
+		loss = pdg.torch_score(μ, gamma)
 		loss.backward()
 		ozr.step()
 		
