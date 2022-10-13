@@ -435,7 +435,8 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 		# fp = fp,
 		cluster_dist = cd,
 		inc=prob.value,
-		idef=new_prob.value if also_idef else M.IDef(cd)
+		# idef=new_prob.value if also_idef else M.IDef(cd)
+		idef=new_prob.value if also_idef else float('inf') # too hard to compute
 	)
 
 # custom implementation of the CCCP
