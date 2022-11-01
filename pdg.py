@@ -241,6 +241,7 @@ class PDG:
 				if spec == l: # could just be label name
 					if label is None: 
 						gn, tn, label = X.name, Y.name, l
+						break
 					else: raise ValueError("Spec is not unique! Matching edges: ", 
 							["%s : %s -> %s " % lxy for lxy in self.edges("l,Xn,Yn") if lxy[0] == spec])
 				
