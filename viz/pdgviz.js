@@ -406,7 +406,7 @@ $(function() {
 	window.addEventListener("keydown", function(event){
 		// console.log(event);
 		
-		if(event.key == 'Escape'){
+		if(event.key == 'Escape'){ // cancel //
 			if ( temp_link ) {
 				if(temp_link.based_on ) 
 					temp_link.based_on.display = true;

@@ -1,0 +1,3 @@
+class PD {
+	constructor()
+}

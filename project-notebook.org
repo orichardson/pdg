@@ -16,7 +16,7 @@ a single operation.
 *** TODO Actions + Keystroke Display
 Make such "Special Operations" visually clear and automatically display which ones are available. Important for ease of use
 
-*** Visual [2/7]
+*** Visual [2/8]
 **** DONE draw labels
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2022-05-23 Mon 16:02]
@@ -30,8 +30,10 @@ One possibility: multiple link nodes.
 **** TODO double-headed arrows
 **** TODO circle-tailed arrows
 *
+**** TODO LaTeX in nodes & arrows;
+**** TODO scaling diagrams
+**** TODO snap-to
 
-**** TODO MathJax in Nodes
 
 *** TODO Simulation Toggle-able.
 
@@ -50,7 +52,10 @@ So how do you scale things separately?
 
 *** Node Focus
 **** TODO Value Editor
-**** TODO Associate list to each node
+**** DONE Associate list to each node
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2022-12-12 Mon 18:56]
+:END:
 **** See: Multi-PDG below
 
 *** TODO UNDO
@@ -91,4 +96,3 @@ So how do you scale things separately?
 *** [X] import / export
 
 
-* FEATURE WISHLIST
