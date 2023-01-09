@@ -48,7 +48,8 @@ function PDGView(hypergraph, mousept) {
 	let parentLinks = [];
 	let repaint = () => undefined
 	
-	let sim_mode = "linknodes only";  // can also be "all"
+	// let sim_mode = "linknodes only";  // can also be "all"
+	let sim_mode = "all";
 	
 	let canvas = document.getElementById("canvas")
 	let context = canvas.getContext("2d");
@@ -957,6 +958,7 @@ function PDGView(hypergraph, mousept) {
 		compute_link_shape : compute_link_shape,		
 		repaint_via : function(redraw) {
 			repaint = redraw
-		}
+		},
+		align_node_dom : align_node_dom
 	}
 }

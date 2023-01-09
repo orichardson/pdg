@@ -266,36 +266,35 @@ $(function() {
 		let obj = pdg.pickN(e), link = pdg.pickL(e);
 		if(obj) { // rename selected node
 			// EXPANDING CODE
-			// if(!obj.expanded) {
-			// 	pdg.sim.stop();
-			// 	obj.expanded = true;
-			// 	obj.old_wh = [obj.w, obj.h];
-			// 	// [obj.w, obj.h] = [550,250];
-			// 	[obj.w, obj.h] = [200,150];
-			// 	[obj.fx, obj.fy] = [obj.x, obj.y];
-			// 	pdg.sim.alpha(2).alphaTarget(0).restart();
-			// 
-			// 	for(let ln of linknodes) {
-			// 		// if l.srcs or l.tgts includes n,
-			// 		// then set strength to zero?
-			// 		// set distance?
-			// 	}
-			// }
-			// else {
-			// 	obj.expanded = false;
-			// 	[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
-			// 	delete obj.fx
-			// 	delete obj.fy;
-			// 	pdg.sim.alpha(2).alphaTarget(0).restart();
-			// }
-			// align_node_dom();
+			if(!obj.expanded) {
+				pdg.sim.stop();
+				obj.expanded = true;
+				obj.old_wh = [obj.w, obj.h];
+				// [obj.w, obj.h] = [550,250];
+				[obj.w, obj.h] = [200,150];
+				[obj.fx, obj.fy] = [obj.x, obj.y];
+				pdg.sim.alpha(2).alphaTarget(0).restart();
+			
+				for(let ln of pdg.linknodes) {
+					// if l.srcs or l.tgts includes n,
+					// then set strength to zero?
+					// set distance?
+				}
+			}
+			else {
+				obj.expanded = false;
+				[obj.w, obj.h] = obj.old_wh ? obj.old_wh : [initw,inith];
+				delete obj.fx
+				delete obj.fy;
+				pdg.sim.alpha(2).alphaTarget(0).restart();
+			}
+			pdg.align_node_dom();
 			
 			
 			//RENAMING CODE
-			let name = promptForName("Enter New Variable Name", obj.id, pdg.all_node_ids);
-			if(!name) return;
-			
-			pdg.rename_node(obj.id, name);
+			// let name = promptForName("Enter New Variable Name", obj.id, pdg.all_node_ids);
+			// if(!name) return;
+			// pdg.rename_node(obj.id, name);
 		} else if(link) { // rename selected cpd
 			
 			
