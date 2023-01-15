@@ -50,7 +50,7 @@ function PDGView(hypergraph, mousept) {
 	
 	// let sim_mode = "linknodes only";  // can also be "all"
 	let sim_mode = "all";
-	
+
 	let canvas = document.getElementById("canvas")
 	let context = canvas.getContext("2d");
 	
@@ -601,7 +601,8 @@ function PDGView(hypergraph, mousept) {
 			.remove();
 		
 		nodedata = nodedata.merge(newnodeGs);
-		nodedata.classed('expanded', n => n.expanded)
+		nodedata.classed('expanded', n => n.expanded);
+		nodedata.classed('anchored', n => n.anchored);
 		nodedata.selectAll("rect.nodeshape")
 			.attr('width', n => n.w).attr('x', n => -n.w/2)
 			.attr('height', n => n.h).attr('y', n => -n.h/2)

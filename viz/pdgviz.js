@@ -24,11 +24,11 @@ $(function() {
 		canvas.width = window.innerWidth;
 		canvas.height = window.innerHeight;
 		if(typeof simulation != "undefined") {
-			for(let pudga of pdgs) {
+			for(let pudgha of pdgs) {
 			// pdg.sim.force('center').x(canvas.width/2);
 			// pdg.sim.force('center').y(canvas.height/2);
-				pudga.sim.alpha(1).restart();
-				pudga.tick();
+				pudgha.sim.alpha(1).restart();
+				pudgha.tick();
 			}
 		}
 		// pdg.tick();
@@ -49,7 +49,7 @@ $(function() {
 	let mouse = { w : 0, h: 0 };
 	
 	pdg = PDGView(hypergraph, mouse);
-	pdgs =  [ pdg ]
+	pdgs =  [ pdg ];
 	
 		
 	$('#save-button').click(function(e){
@@ -171,6 +171,8 @@ $(function() {
 			} else {  // if it's a node
 				event.subject.fx = event.subject.x;
 				event.subject.fy = event.subject.y;
+				event.subject.anchored = false;
+				pdg.align_node_dom();
 			}
 		}
 		else if (mode == 'draw') {
@@ -241,7 +243,15 @@ $(function() {
 				// 		event.subject.initial_offset[0] + event.,
 				// 		event.subject.initial_offset[1] + event.dy ]
 			} else {// it's a node	
-				if(!event.subject.expanded && pdg.sim_mode === "all") {
+				if(event.sourceEvent.shiftKey){
+					event.subject.anchored = true;
+					pdg.align_node_dom();
+				}
+
+				if(!event.subject.expanded 
+					// && pdg.sim_mode === "all"
+					&& !event.subject.anchored
+					) {
 					event.subject.fx = null;
 					event.subject.fy = null;
 				}

@@ -85,23 +85,29 @@
 	display: none;
 }
 
+
 .linknode.selected > text.bg {
 	stroke: rgba(230,150,50,0.5);
 }
 .linknode:not(.selected) > text.bg {
 	stroke: rgba(230,230,230,0.5);
 }
-
 .node:not(.selected):not(.expanded) > .nodeshape {
 	fill : rgba(200,200,200, 0.3);
 	stroke-width: 1px;
 	stroke: #888;
 }
-
-.node.selected > .nodeshape {
+.node.selected:not(.expanded) > .nodeshape {
 	fill : rgba(230, 150, 50, 0.4);
+}
+.node.selected > .nodeshape {
 	stroke-width: 2px;
 	stroke: #863;
+}
+
+.node.anchored > .nodeshape {
+	/* stroke-dasharray : "4 1"; */
+	fill: rgba(100,20,20) !important;
 }
 
 
