@@ -503,7 +503,8 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 
 	hard_constraints = []
 	logprobs = 0
-	for L,X,Y,β,p in M.edges("l,X,Y,β,P"):
+	# for L,X,Y,β,p in M.edges("l,X,Y,β,P"):
+	for L,X,Y,β,p in M.edges("l,X,Y,α,P"):
 		if 'π' not in L:
 			p = p.to_numpy()
 			zero = (p == 0)
@@ -518,7 +519,9 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 				)
 
 			lin_lp = cp.sum( cp.multiply(lp.reshape(-1), mu_marg(X,Y)) )
-			logprobs += β * lin_lp
+			# oops, I think wrong quantity here. 
+			# logprobs += β * lin_lp
+			logprobs += α * gamma * lin_lp
 
 
 
@@ -629,7 +632,8 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 
 	hard_constraints = []
 	logprobs = 0
-	for L,X,Y,β,p in M.edges("l,X,Y,β,P"):
+	# for L,X,Y,β,p in M.edges("l,X,Y,β,P"):
+	for L,X,Y,α,p in M.edges("l,X,Y,α,P"):
 		if 'π' not in L:
 			p = p.to_numpy()
 			zero = (p == 0)
@@ -644,7 +648,8 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 				)
 
 			lin_lp = cp.sum( cp.multiply(lp.reshape(-1), mu_marg(X,Y)) )
-			logprobs += β * lin_lp
+			# logprobs += β * lin_lp
+			logprobs += α * gamma * lin_lp
 
 
 	## add entropy constraints
@@ -742,8 +747,8 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 			lp = np.where(zero, 0, lp)
 			hard_constraints.append( mu_xy[np.argwhere(zero)] == 0 )
 
-		logprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
-
+		# logprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
+		logprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
 
 	local_marg_constraints = []
 	

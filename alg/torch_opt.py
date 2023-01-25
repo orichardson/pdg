@@ -164,9 +164,6 @@ def opt_dist(pdg, gamma=None,
 		gamma = pdg.gamma_default
 	γ = gamma + extraTemp       
 	
-	Optims = {'adam' : torch.optim.Adam, 'sgd' : torch.optim.SGD, 
-		'asgd' : torch.optim.ASGD, 'lbfgs' : torch.optim.LBFGS}
-	
 	# uniform starting position
 	# μdata = torch.tensor(pdg.genΔ(RJD.unif).data, requires_grad=True)
 	# μdata = torch.tensor(pdg.genΔ(RJD.unif).data, dtype=torch.double, requires_grad=True)
@@ -290,7 +287,7 @@ def opt_dist(pdg, gamma=None,
 	return (μ,)+to_ret if len(to_ret) else μ
 
 
-def optimize_via_FGs(pdg, gamma=0, init=None, iters=1000) -> RJD:
+def optimize_via_FGs(pdg, gamma=0, init=None, iters=350) -> RJD:
 	"""
 	Cover PDG with factors;
 
@@ -319,7 +316,7 @@ def optimize_via_FGs(pdg, gamma=0, init=None, iters=1000) -> RJD:
 		μ.data = pf / pf.sum()
 		# μ.data = factors[0]
 		# print(μ.data.shape)
-		loss = pdg.torch_score(μ, gamma)
+		loss = torch_score(pdg, μ, gamma)
 		loss.backward()
 		ozr.step()
 		
