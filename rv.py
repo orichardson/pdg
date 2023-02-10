@@ -103,6 +103,9 @@ class Variable(set, metaclass=utils.CopiedType):
         return isinstance(other, Variable) and set.__eq__(self, other) and (
                 self.name == other.name if hasattr(self,"name") else True)
 
+    def __hash__(self):
+        return hash( (frozenset(self), ) + ((self.name,) if hasattr(self,'name') else ()))
+
 
     def split(self, atomic=True):
         for s in self.structure:

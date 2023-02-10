@@ -1,6 +1,6 @@
 
 from ..pdg import PDG
-from ..dist import ClusterDist, RawJointDist as RJD
+from ..dist import CliqueForest, RawJointDist as RJD
 
 import networkx as nx
 import numpy as np
@@ -282,12 +282,14 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 
 	local_marg_constraints = []
 	
+	ijedges = [] # collect edges in index form also
 
 	for Ci, Cj in cluster_edges:
 		common = set(Ci) & set(Cj)
 		if len(common) > 0:
 			# Add a constraint that the marginals of these two clusters agree.
 			i, j = Cs.index(Ci), Cs.index(Cj)
+			ijedges.append((i,j))
 
 			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
 			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
@@ -427,7 +429,9 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 		new_prob.solve(**solver_kwargs)
 	
 	# return RJD(mu.value, M.varlist)
-	cd = ClusterDist([ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)])
+	# cd = ClusterDist([ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)])
+	cd = CliqueForest(
+			[ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)], ijedges)
 	return namedtuple("ClusterPseudomarginals",
 			['marginals', 'cluster_dist', 'inc','idef'])(
 		marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
@@ -751,12 +755,14 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		logprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
 
 	local_marg_constraints = []
+	ijedges = [] # collect edges in index form also
+
 	
 	for Ci, Cj in cluster_edges:
 		common = set(Ci) & set(Cj)
 		if len(common) > 0:
 			i, j = Cs.index(Ci), Cs.index(Cj)
-			# print("adding common constr between (",i,",",j,') : ', common,flush=True)
+			ijedges.append((i,j))
 
 			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
 			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
@@ -873,7 +879,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		prev_val = prob.value
 
 
-	cd = ClusterDist([ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)])
+	cd = CliqueForest([ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)], ijedges)
 	return namedtuple("ClusterPseudomarginals", ['marginals', "cluster_dist", 'value'])(
 		marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
 		cluster_dist = cd,

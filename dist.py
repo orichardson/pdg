@@ -16,6 +16,7 @@ import warnings
 import itertools
 import re
 	
+import networkx as nx
 import seaborn as sns
 greens = sns.light_palette("green", as_cmap=True)
 
@@ -399,6 +400,13 @@ class RawJointDist(Dist):
 			return self
 			
 		raise ValueError("This RJD does not have a torch back-end. First torchify.")
+
+	def  to_pgmpy_discrete_factor(self):
+		from pgmpy.factors.discrete import DiscreteFactor
+		return DiscreteFactor( 
+			[v.name for v in self.varlist], 
+			[len(v) for v in self.varlist], 
+			self.data)
 	
 	# Both __mul__ and __rmul__ reqiured to do things like multiply by constants...
 	def __mul__(self,other):
@@ -701,22 +709,63 @@ def _key(rjd : RawJointDist) -> FrozenSet:
 	"""turns RawJointDist's variable list into a hashable key""" 
 	return frozenset([V.name for V in rjd.varlist])
 
-class ClusterDist(Dist):
-	def __init__(self, rjds : List[RawJointDist]):
+
+class CliqueForest(Dist):
+	def __init__(self, rjds : List[RawJointDist], edges=None):
 		# self.dists = { _key(rjd) : rjd for rjd in rjds }
 		# self.dists = 
-		self.dists = rjds # a list of RawJointDists
+		self.dists = rjds # a list of RawJointDist, so that C[i] is the ith cluster.
 		self.lookup = { _key(rjd) : i for i,rjd in enumerate(rjds) }
 
-		# self.keys_big2small = sorted(
+			# self.keys_big2small = sorted(
 		# 	(frozenset([V.name for V in rjd.varlist]) for rjd in rjds),
 		# 	key= lambda s: 
 		# )
 
+		# take maximum commonality spanning tree; don't see why guaranteed
+		# to find one satisfying the running intersection property, but
+		# it's the way pgmpy implements the junction tree algorithm, so...
+		if edges is None:
+			# possibly unnecessary O(n^2) computation here...
+			complete_graph = nx.Graph()
+			for i in range(len(rjds)):
+				for j in range(i+1,len(rjds)):
+					common = set(rjds[i].varlist) & set(rjds[j].varlist)
+					complete_graph.add_edge(i,j, weight=-len(common))
+			
+			self.Gr = nx.minimum_spanning_tree(complete_graph)
+		else:
+			# graph is between integer indices.
+			self.Gr = nx.Graph(edges)
+			assert set(self.Gr.nodes()) == set(range(len(rjds)))
 
-		## TODO ASSERT ALL MARGINALS ARE THE SAME
-		## TODO ASSERT THAT:
+		
+
+		# calculate the union of all of the variable sets;
+		self.varlist = []
+		for rjd in rjds:
+			for v in rjd.varlist:
+				if v not in self.varlist:
+					self.varlist.append(v)
+
+		## assert that induced subtrees are connected
+		for v in self.varlist:
+			Cv =  [ i for i in range(len(rjds)) if v in rjds[i].varlist ]
+			assert nx.is_connected(nx.induced_subgraph(self.Gr, Cv))
+		
+		self.Ss = {}
+		## assert that all marginals are the same along tree, while computing sep sets.
+		for (i,j) in self.edges:
+			common = list( set(rjds[i].varlist) & set(rjds[j].varlist) )
+			self.Ss[i,j] = common
+			# assert np.allclose( rjds[i].prob_matrix(*common), rjds[j].prob_matrix(*common))
+			assert np.allclose( rjds[i][common], rjds[j][common])
+
 		## if C1 \cap C2 \
+
+	@property
+	def edges(self):
+		return self.Gr.edges()
 
 	@property
 	def _torch(self):
@@ -754,6 +803,7 @@ class ClusterDist(Dist):
 		return self.conditional_marginal(vars)
 
 
+
 	def prob_matrix(self, *vars, given=None):
 		""" A global, less user-friendly version of
 		conditional_marginal(), which keeps indices for broadcasting.
@@ -761,6 +811,18 @@ class ClusterDist(Dist):
 		for rjd in self.dists:
 			try: return rjd.prob_matrix(*vars, given=given)
 			except ValueError: continue # this isn't the one.
+
+
+		if given is None:
+			warnings.warn("Falling back on untested junction tree pgmpy query")
+
+			J = self.to_pgmpy_jtree()
+			from pgmpy.inference.ExactInference import BeliefPropagation
+			bp = BeliefPropagation(J)
+			ans = bp.query([v.name for v in vars])
+
+			return RawJointDist( ans.values, [*vars]).prob_matrix(*vars)
+
 
 		raise NotImplementedError("not all variables are in the same cluster;"+
 			" this doesn't work yet.")
@@ -791,34 +853,53 @@ class ClusterDist(Dist):
 		# 		collapsed = np.ma.divide(collapsed, collapsed.sum(axis=dim_nocond, keepdims=True))
 
 		# return collapsed
+
+	def to_pgmpy_jtree(self):
+		from pgmpy.models import JunctionTree
+
+		G = JunctionTree()
+		namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
+		G.add_nodes_from(namednodes)
+		G.add_edges_from([ (namednodes[i], namednodes[j]) for (i,j) in self.edges ])
+		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
+		return G
+
 		
 	def H(self, *vars, base=2, given=None):
-		if vars == (Ellipsis,):
-			## comptues the Kikuchi approximation.
+		if vars == (Ellipsis,) and given is None:
+			ent = 0
+			for C in self.dists:
+				ent += C.H(...)
 
-			ent = 0.
-			# c = { frozenset(range(len(self.dists))) : 1 } # overcounting numbers
-			c = {}
+			for (i,j) in self.Ss:
+				ent -= self.dists[i].H(*self.Ss[i,j])
+			# ## comptues the Kikuchi approximation.
+			# ## edit: this is exponential time for no reason; with edges,
+			# # we can actually make sense of this; otherwise, it's not clearly meaningful.
 
-			# for S in powerset(self.dists, reverse=True):
-			for S in powerset(range(len(self.dists)), reverse=False):
-				if len(S) == 0: continue
+			# ent = 0.
+			# # c = { frozenset(range(len(self.dists))) : 1 } # overcounting numbers
+			# c = {}
 
-				common_names = set.intersection(*[
-					set([v.name for v in self.dists[i].varlist])  for i in S])
+			# # for S in powerset(self.dists, reverse=True):
+			# for S in powerset(range(len(self.dists)), reverse=False):
+			# 	if len(S) == 0: continue
 
-				if len(common_names) == 0 \
-						or frozenset(common_names) in c: 
-					continue
+			# 	common_names = set.intersection(*[
+			# 		set([v.name for v in self.dists[i].varlist])  for i in S])
+
+			# 	if len(common_names) == 0 \
+			# 			or frozenset(common_names) in c: 
+			# 		continue
 				
-				# overcount_S = 1 - sum(cr for r,cr in c.items() if r.issubset(S))
-				# c[frozenset(S)] = overcount_S
-				overcount_S = 1 - sum(cr for r,cr in c.items() if r.issuperset(common_names))
-				c[frozenset(common_names)] = overcount_S
+			# 	# overcount_S = 1 - sum(cr for r,cr in c.items() if r.issubset(S))
+			# 	# c[frozenset(S)] = overcount_S
+			# 	overcount_S = 1 - sum(cr for r,cr in c.items() if r.issuperset(common_names))
+			# 	c[frozenset(common_names)] = overcount_S
 				
-				ent += overcount_S * self.dists[S[0]].H(*common_names)
+			# 	ent += overcount_S * self.dists[S[0]].H(*common_names)
 			
-			# print(c)
+			# # print(c)
 			return ent
 
 
