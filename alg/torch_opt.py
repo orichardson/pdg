@@ -3,8 +3,10 @@ import sys # for printing.
 import numpy as np
 from functools import reduce
 
+from .tree_decomp import tree_decompose
+from ..pdg import PDG
 from ..fg import FactorGraph
-from ..dist import RawJointDist as RJD
+from ..dist import CliqueForest, RawJointDist as RJD
 
 # try:
 import torch
@@ -55,14 +57,14 @@ def torch_score_alt(pdg, μ : RJD, γ):
 		loss += α*γ* zmul(muxy , logliklihood).sum()
 		# print('... loss now ', loss/np.log(2))
 
-	loss /= np.log(2)
-	loss -= γ * μ.H(...)
+	loss /= np.log(2)  # compute loss base 2, for some reason...
+	loss -= γ * μ.H(...)  # entropy is already computed base 2, for some reason...
 	# print('after entropy')
 	# loss -= γ * zlog( μ )
 	
 	return loss
 
-def torch_score(pdg, μ : RJD, γ):
+def torch_score(pdg, μ : RJD | CliqueForest, γ):
 	loss = torch.tensor(0.)
 	for X,Y,cpd_df,α,β in pdg.edges("XYPαβ"):
 		# print("For edge %s -> %s (α=%.2f, β=%.2f)"%(X.name,Y.name,α,β))
@@ -287,9 +289,84 @@ def opt_dist(pdg, gamma=None,
 	return (μ,)+to_ret if len(to_ret) else μ
 
 
-def optimize_via_FGs(pdg, gamma=0, init=None, iters=350) -> RJD:
+
+def torch_opt_clusters(M : PDG, gamma=0,
+	varname_clusters = None, cluster_edges = None,
+	iters=350,
+	**solver_kwargs) -> CliqueForest:
 	"""
-	Cover PDG with factors;
+	A black-box optimization analogue of `interior_pt.cccp_opt_clusters`.
+	"""
+
+	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
+	# 1. create tree decomposition
+	Cs, cluster_edges, edgemap, cluster_shapes = tree_decompose(
+			M, varname_clusters, cluster_edges, verb)
+	
+	# 2. initialize (uniform? fancy avg of cpds?) clique forest
+	cluster_data = [
+		torch.ones(shape, dtype=torch.double)
+		for shape in cluster_shapes
+	]
+	for cdist in cluster_data:
+		cdist /= cdist.sum()
+		cdist.requires_grad = True
+
+	mu_ctree = CliqueForest([
+		RJD(cdata, [M.vars[n] for n in C], use_torch=True)
+			for (cdata,C) in zip(cluster_data,Cs)
+		])
+
+	ozr = torch.optim.Adam(cluster_data,lr=3E-3)
+
+	for it in range(iters):
+		ozr.zero_grad()
+		loss = torch_score(M, mu_ctree, gamma)
+
+		unnorm_loss = 0
+		## hack some constraints on here: match marginals along tree, + sum to 1.
+		for dist in mu_ctree.dists:
+			unnorm_loss += torch.log(dist.data.sum()) **2 # equal to zero iff normalized
+
+
+		mismatch_loss = 0
+		for (i,j) in mu_ctree.edges:
+			Ci = mu_ctree.dists[i]
+			Cj = mu_ctree.dists[j]			
+			S = mu_ctree.Ss[i,j]
+
+			# print(S)
+			# print(Ci, Ci.prob_matrix(*S).shape)
+			# print(Cj, Cj.prob_matrix(*S).shape)
+			mismatch_loss += ((Ci.prob_matrix(*S) - Cj.prob_matrix(*S))**2).sum()
+
+			# loss += ((Ci[S] - Cj[S])**2).sum()
+		
+		if verb: print("{:.3f}   {:.3f}   {:.3f}   [{:.5f}, {:.5f}]"
+			.format(loss.item(), unnorm_loss.item(), mismatch_loss.item(),
+				min(c.min() for c in cluster_data), max(c.max() for c in cluster_data))
+		)
+		loss += unnorm_loss + mismatch_loss
+
+		loss.backward()
+		ozr.step()
+
+		for (ctensor, dist) in zip(cluster_data, mu_ctree.dists):
+			# torch.nn.functional.relu(ctensor, inplace=True)
+			# ctensor[ctensor < 0] = 0
+			dist.data = torch.clip(ctensor, min=0)
+
+
+	return mu_ctree
+
+	# 3. optimize over clique forest, unsafely (since constraints aren't satisfied),
+	#    but with extra loss term to try to encourage constraint satisfaction. 
+
+def optimize_joint_via_FGs(pdg, gamma=0, init=None, iters=350) -> RJD:
+	"""
+	Cover PDG with factors; do optimization over factor
+	parameterizations, but with a joint distribution intermediate state,
+	so still exponentially sized. 
 
 	#TODO : remove the joint distribution.
 	"""

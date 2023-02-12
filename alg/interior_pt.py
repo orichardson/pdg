@@ -1,6 +1,7 @@
 
 from ..pdg import PDG
 from ..dist import CliqueForest, RawJointDist as RJD
+from .tree_decomp import tree_decompose
 
 import networkx as nx
 import numpy as np
@@ -125,64 +126,6 @@ def _n_copies( mu_X, n ):
 	return cp.hstack( [ mu_X for _ in range(n) ] ).T
 
 
-def _find_cluster_graph(M : PDG, 
-		varname_clusters = None, cluster_edges =None,
-		verbose=False
-	):
-	"""
-	Given a PDG `M`, and possibly a specification of which clusters and / or cluster
-	edges we want to see in the graph, find a cluster graph (ideally a cluster tree)
-	that has the running intersection property.
-	"""
-	if varname_clusters is None:
-		if verbose: print("no clusters given; using pgmpy junction tree to find some.")
-		
-		mn = M.to_markov_net()
-		component_jtrees = [mn.subgraph(N).to_junction_tree() for N in nx.connected_components(mn)]
-
-		# jtree = 
-		# varname_clusters = list(jtree.nodes())
-		# cluster_edges = list(jtree.edges())
-		varname_clusters = [N for jt in component_jtrees for N in jt.nodes() ]
-		cluster_edges = [N for jt in component_jtrees for N in jt.edges() ]
-
-		if verbose: print("FOUND: ",varname_clusters)
-
-	Cs = [tuple(C) for C in varname_clusters]
-	m = len(varname_clusters)
-
-	if cluster_edges is None:
-		complete_graph = nx.Graph()
-		for i in range(m):
-			for j in range(i+1,m):
-				common = set(Cs[i]) & set(Cs[j])
-				complete_graph.add_edge(Cs[i], Cs[j], weight=-len(common))
-
-				## might want to weight by number of params (like below), but might not give
-				## the running intersection property, so instead do the above.
-				#
-				# num_sepset_params = np.prod([len(M.vars[X]) for X in common])
- 				# complete_graph.add_edge(Cs[i], Cs[j], weight=-num_sepset_params)
-		
-		cluster_edges = nx.minimum_spanning_tree(complete_graph).edges()
-
-	cluster_shapes = [tuple(len(M.vars[Vn]) for Vn in C) for C in Cs]
-
-	edgemap = {} # label -> cluster index
-	
-	sorted_clusters = sorted(enumerate(Cs), key=lambda iC: np.prod(cluster_shapes[iC[0]]))
-	if verbose: print(sorted_clusters)
-
-	for L, X, Y in M.edges("l,X,Y"):
-		for i,cluster in sorted_clusters:
-			if all((N.name in cluster) for N in (X & Y).atoms):
-				edgemap[L] = i
-				break
-		else:
-			raise ValueError("Invalid Cluster Tree: an edge (%s: %s → %s) is not contained in any cluster"
-				% (L,X.name,Y.name) )
-
-	return Cs, cluster_edges, edgemap, cluster_shapes
 
 ############# INFERENCE ALGORITHMS ############
 # optimizes over joint distributions
@@ -249,7 +192,7 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	"""
 	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
 
-	Cs, cluster_edges, edgemap, cluster_shapes = _find_cluster_graph(M, varname_clusters, cluster_edges, verb) 
+	Cs, cluster_edges, edgemap, cluster_shapes = tree_decompose(M, varname_clusters, cluster_edges, verb) 
 	m = len(Cs)
 
 	mus = [ cp.Variable(np.prod(shape), nonneg=True) for shape in cluster_shapes]
@@ -705,7 +648,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		**solver_kwargs) :
 	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
 
-	Cs, cluster_edges, edgemap, cluster_shapes = _find_cluster_graph(M, varname_clusters, cluster_edges, verb)
+	Cs, cluster_edges, edgemap, cluster_shapes = tree_decompose(M, varname_clusters, cluster_edges, verb)
 	mus = [ cp.Variable(np.prod(shape), nonneg=True) for shape in cluster_shapes ]
 
 	ts = {}

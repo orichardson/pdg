@@ -163,6 +163,58 @@ def broadcast(cpt, varlist,
 	return output
 
 
+def _process_vars(varlist, vars, given=None):
+	if vars is ...:
+		vars = varlist
+
+	if isinstance(vars, rv.Variable) \
+		or isinstance(vars, rv.ConditionRequest) or vars is ...:
+			vars = [vars]
+	
+	if isinstance(vars, str):
+		if '|' in vars:
+			t, g = vars.split("|")
+			vars = [*re.split(r'[\s,]', t), '|', *re.split(r'[\s,]', g)]
+		else:
+			vars = re.split(r'[\s,]', vars)
+
+	targetvars = []
+	conditionvars = list(given) if given else []
+
+	mode = "join"
+
+	for var in vars:
+		if isinstance(var, rv.ConditionRequest) or var == '|':
+			if mode == "condition":
+				raise ValueError("Only one bar is allowed to condition")
+			
+			mode = "condition"
+
+			if isinstance(var, rv.ConditionRequest):
+				targetvars.append(var.target)
+				conditionvars.append(var.given)
+		else:
+			l = (conditionvars if mode == "condition" else targetvars)
+			if isinstance(var, rv.Variable):
+				l.append(var)
+			elif isinstance(var, str):
+				if len(var) == 0 : continue
+				try:
+					l.append(next(v for v in varlist if v.name == var))
+				except StopIteration:
+					raise ValueError("No variable named \"%s\" in dist"%var)
+				# if mode == "condition":
+				#     conditionvars.append(var)
+				# elif mode == "join":
+				#     targetvars.append(var)
+			elif var is ...:
+				l.extend(v for v in varlist if v not in l)
+			else:
+				raise ValueError("Could not interpret ",var," as a variable")
+
+	return targetvars, conditionvars
+
+
 
 class CDist(ABC): pass
 class Dist(CDist): pass
@@ -456,55 +508,7 @@ class RawJointDist(Dist):
 		return self.data.shape
 
 	def _process_vars(self, vars, given=None):
-		if vars is ...:
-			vars = self.varlist
-
-		if isinstance(vars, rv.Variable) \
-			or isinstance(vars, rv.ConditionRequest) or vars is ...:
-				vars = [vars]
-		
-		if isinstance(vars, str):
-			if '|' in vars:
-				t, g = vars.split("|")
-				vars = [*re.split(r'[\s,]', t), '|', *re.split(r'[\s,]', g)]
-			else:
-				vars = re.split(r'[\s,]', vars)
-
-		targetvars = []
-		conditionvars = list(given) if given else []
-
-		mode = "join"
-
-		for var in vars:
-			if isinstance(var, rv.ConditionRequest) or var == '|':
-				if mode == "condition":
-					raise ValueError("Only one bar is allowed to condition")
-				
-				mode = "condition"
-
-				if isinstance(var, rv.ConditionRequest):
-					targetvars.append(var.target)
-					conditionvars.append(var.given)
-			else:
-				l = (conditionvars if mode == "condition" else targetvars)
-				if isinstance(var, rv.Variable):
-					l.append(var)
-				elif isinstance(var, str):
-					if len(var) == 0 : continue
-					try:
-						l.append(next(v for v in self.varlist if v.name == var))
-					except StopIteration:
-						raise ValueError("No variable named \"%s\" in dist"%var)
-					# if mode == "condition":
-					#     conditionvars.append(var)
-					# elif mode == "join":
-					#     targetvars.append(var)
-				elif var is ...:
-					l.extend(v for v in self.varlist if v not in l)
-				else:
-					raise ValueError("Could not interpret ",var," as a variable")
-
-		return targetvars, conditionvars
+		return _process_vars(self.varlist, vars, given)
 
 	def _idx(self, var):
 		try:
@@ -516,16 +520,6 @@ class RawJointDist(Dist):
 		return _idxs(self.varlist, *varis, multi=multi)
 
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
-		""" returns its argument, but shaped
-		so that it broadcasts properly (e.g., for taking expectations) in this
-		distribution. For example, if the var list is [A, B, C, D], the cpt
-		B -> D would be broadcast to shape [1, 2, 1, 3] if |B| = 2 and |D| =3.
-
-		Parameters
-		----
-		> cpt: the argument to be broadcast
-		> vfrom,vto: the attached variables (supply only if cpt does not have this data)
-		"""
 		return broadcast(cpt, self.varlist, vfrom, vto)
 
 	def normalize(self):
@@ -679,7 +673,6 @@ class RawJointDist(Dist):
 		# import matplotlib.pyplot as plt
 		from matplotlib_venn import venn3
 
-
 		# H = self.H
 		I = self.I
 
@@ -707,7 +700,7 @@ class RawJointDist(Dist):
 
 def _key(rjd : RawJointDist) -> FrozenSet:
 	"""turns RawJointDist's variable list into a hashable key""" 
-	return frozenset([V.name for V in rjd.varlist])
+	return frozenset(rjd.varlist)
 
 
 class CliqueForest(Dist):
@@ -753,15 +746,20 @@ class CliqueForest(Dist):
 			Cv =  [ i for i in range(len(rjds)) if v in rjds[i].varlist ]
 			assert nx.is_connected(nx.induced_subgraph(self.Gr, Cv))
 		
+		# pre-calculate and save the separating sets, for convenience
 		self.Ss = {}
-		## assert that all marginals are the same along tree, while computing sep sets.
 		for (i,j) in self.edges:
-			common = list( set(rjds[i].varlist) & set(rjds[j].varlist) )
-			self.Ss[i,j] = common
-			# assert np.allclose( rjds[i].prob_matrix(*common), rjds[j].prob_matrix(*common))
-			assert np.allclose( rjds[i][common], rjds[j][common])
+			self.Ss[i,j] = list( set(rjds[i].varlist) & set(rjds[j].varlist) )
 
-		## if C1 \cap C2 \
+
+	@property
+	def calibrated(self):
+		## assert that all marginals are the same along tree
+		return all(
+			np.allclose( 
+				self.dists[i][self.Ss[i,j]],
+				self.dists[j][self.Ss[i,j]])
+			for (i,j) in self.edges )
 
 	@property
 	def edges(self):
@@ -779,7 +777,8 @@ class CliqueForest(Dist):
 	def conditional_marginal(self, vars, query_mode=None):
 		""" 
 		For now, only needs to handle the case where all variables fall within
-		one distribution or the other. 
+		one distribution or the other. (Update: now uses pgmpy to handle 
+		other cases also!)
 		"""
 
 		for rjd in self.dists:
@@ -795,7 +794,12 @@ class CliqueForest(Dist):
 				continue # this isn't the one.
 
 
-		raise NotImplementedError("not all variables are in the same cluster; this doesn't work yet.")
+		warnings.warn("Falling back on untested junction tree pgmpy query")
+		tarvars, cndvars =_process_vars(self.varlist, vars)
+		rjd = self._fallback_joint_query_bp(tarvars + cndvars)
+		return rjd.conditional_marginal(vars, query_mode=query_mode)
+
+		# raise NotImplementedError("not all variables are in the same cluster; this doesn't work yet.")
 
 
 	# returns the marginal on a variable
@@ -803,29 +807,68 @@ class CliqueForest(Dist):
 		return self.conditional_marginal(vars)
 
 
+	def to_pgmpy_jtree(self):
+		from pgmpy.models import JunctionTree
+
+		G = JunctionTree()
+		namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
+		G.add_nodes_from(namednodes)
+		G.add_edges_from([ (namednodes[i], namednodes[j]) for (i,j) in self.edges ])
+		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
+		return G
+
+	def _fallback_joint_query_bp(self, varilist):
+		J = self.to_pgmpy_jtree()
+		from pgmpy.inference.ExactInference import BeliefPropagation
+		bp = BeliefPropagation(J)
+
+		ans = bp.query([v.name for v in varilist])
+		return RawJointDist(ans.values, varilist)
+
+	
+	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
+		return broadcast(cpt, self.varlist, vfrom, vto)
 
 	def prob_matrix(self, *vars, given=None):
 		""" A global, less user-friendly version of
 		conditional_marginal(), which keeps indices for broadcasting.
 		Does not handle duplicate dimensions. """
 		for rjd in self.dists:
-			try: return rjd.prob_matrix(*vars, given=given)
+			try: 
+				localpm = rjd.prob_matrix(*vars, given=given)
+				# print(localpm.shape)
+
+				# extend with ones for all missing dimensions;
+				localpm = localpm.reshape(localpm.shape + 
+					(1,)*(len(self.varlist) - len(rjd.varlist)))
+				
+				# build permutation
+				permutation = []
+				m = 0
+				for V in self.varlist:
+					if V in rjd.varlist:
+						permutation.append(rjd.varlist.index(V))
+					else:
+						permutation.append(len(rjd.varlist) + m)
+						m += 1
+				# print(permutation)
+
+				if rjd._torch:
+					return localpm.permute( permutation )
+				else:
+					return np.moveaxis(localpm, permutation, [*range(len(self.varlist))])
 			except ValueError: continue # this isn't the one.
 
 
-		if given is None:
-			warnings.warn("Falling back on untested junction tree pgmpy query")
-
-			J = self.to_pgmpy_jtree()
-			from pgmpy.inference.ExactInference import BeliefPropagation
-			bp = BeliefPropagation(J)
-			ans = bp.query([v.name for v in vars])
-
-			return RawJointDist( ans.values, [*vars]).prob_matrix(*vars)
+		# if given is None:
+		warnings.warn("Falling back on untested junction tree pgmpy query")
+		tarvars, cndvars =_process_vars(self.varlist, vars, given=given)
+		ans = self._fallback_joint_query_bp(tarvars + cndvars)
+		return ans.prob_matrix(*vars,given=given)
 
 
-		raise NotImplementedError("not all variables are in the same cluster;"+
-			" this doesn't work yet.")
+		# raise NotImplementedError("not all variables are in the same cluster;"+
+		# 	" this doesn't work yet.")
 		# tarvars, cndvars = self._process_vars(vars, given=given)
 		# # print([t.name for t in tarvars], "|", [c.name for c in cndvars])
 		# idxt = self._idxs(*tarvars)
@@ -854,15 +897,6 @@ class CliqueForest(Dist):
 
 		# return collapsed
 
-	def to_pgmpy_jtree(self):
-		from pgmpy.models import JunctionTree
-
-		G = JunctionTree()
-		namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
-		G.add_nodes_from(namednodes)
-		G.add_edges_from([ (namednodes[i], namednodes[j]) for (i,j) in self.edges ])
-		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
-		return G
 
 		
 	def H(self, *vars, base=2, given=None):
