@@ -2,13 +2,13 @@ import sys # for printing.
 # from random import random
 import numpy as np
 from functools import reduce
+from typing import Union
 
 from .tree_decomp import tree_decompose
 from ..pdg import PDG
 from ..fg import FactorGraph
 from ..dist import CliqueForest, RawJointDist as RJD
 
-# try:
 import torch
 
 LOGZERO=1E12
@@ -64,7 +64,7 @@ def torch_score_alt(pdg, μ : RJD, γ):
 	
 	return loss
 
-def torch_score(pdg, μ : RJD | CliqueForest, γ):
+def torch_score(pdg, μ : Union[RJD,CliqueForest], γ):
 	loss = torch.tensor(0.)
 	for X,Y,cpd_df,α,β in pdg.edges("XYPαβ"):
 		# print("For edge %s -> %s (α=%.2f, β=%.2f)"%(X.name,Y.name,α,β))
@@ -148,7 +148,7 @@ def approx_score(pdg, F : FactorGraph, γ):
 	return loss
 
 
-def opt_dist(pdg, gamma=None,
+def opt_joint(pdg, gamma=None,
 		extraTemp = 0, iters=350,
 		ret_losses:bool = False,
 		ret_iterates:bool = False,
@@ -162,9 +162,9 @@ def opt_dist(pdg, gamma=None,
 	""" = min_\mu inc(\mu, gamma) """
 	optimizer = optimizer.lower()
 	verb=False
-	if 'verbose' in optimizer_kwargs:
-		verb = optimizer_kwargs['verbose']
-		del optimizer_kwargs['verbose']
+	if 'verbose' in optim_kwargs:
+		verb = optim_kwargs['verbose']
+		del optim_kwargs['verbose']
 
 	if gamma is None: # This is the target gamma
 		gamma = pdg.gamma_default
@@ -294,7 +294,7 @@ def opt_dist(pdg, gamma=None,
 
 
 
-def torch_opt_clusters(M : PDG, gamma=0,
+def opt_clustree(M : PDG, gamma=0,
 	varname_clusters = None, cluster_edges = None,
 	max_iters=3500, loss_change_tol = 1E-11,
 	optimizer='Adam',
