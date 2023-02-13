@@ -161,7 +161,11 @@ def opt_dist(pdg, gamma=None,
 	):
 	""" = min_\mu inc(\mu, gamma) """
 	optimizer = optimizer.lower()
-	
+	verb=False
+	if 'verbose' in optimizer_kwargs:
+		verb = optimizer_kwargs['verbose']
+		del optimizer_kwargs['verbose']
+
 	if gamma is None: # This is the target gamma
 		gamma = pdg.gamma_default
 	γ = gamma + extraTemp       
@@ -243,7 +247,7 @@ def opt_dist(pdg, gamma=None,
 		l = closure().detach().item()
 		# went_up = l > losses[-1]            
 
-		if it%(1+iters//100) == 0:# or went_up: # Nice printing.
+		if verb and it%(1+iters//5) == 0:# or went_up: # Nice printing.
 			sys.stdout.write(
 				('\r[{ep:>'+numdig+'}/{its}]  loss:  {ls:.3e};  lr: {lr:.3e}; \t graient magnitude: {gm:.3e} \t ' + extrastr)\
 					.format(ep=it, ls=l, lr=lrsched1.get_last_lr()[0], its=iters, gm=torch.norm(μdata.grad)) )
@@ -320,7 +324,10 @@ def torch_opt_clusters(M : PDG, gamma=0,
 	ozr = Optims[optimizer](cluster_data, **optimizer_kwargs)
 
 	mu_ctree = CliqueForest([
-		RJD(torch.clip(cdata, min=0), [M.vars[n] for n in C], use_torch=True)
+		RJD(
+			torch.clip(cdata, min=0),
+			# cdata,
+			 [M.vars[n] for n in C], use_torch=True)
 			for (cdata,C) in zip(cluster_data, Cs)
 		])
 
@@ -350,6 +357,9 @@ def torch_opt_clusters(M : PDG, gamma=0,
 	def closure():
 		ozr.zero_grad(set_to_none=True)
 		# ozr.zero_grad()
+		for (ctensor, dist) in zip(cluster_data, mu_ctree.dists):
+			dist.data = torch.clip(ctensor, min=0)
+
 		loss = sum(losses())
 		# loss.backward(retain_graph=True)
 		loss.backward()
@@ -360,13 +370,15 @@ def torch_opt_clusters(M : PDG, gamma=0,
 		# 	cdist.requires_grad = True
 		
 		loss, unnorm_loss, mismatch_loss = losses()
-		if verb: print("{:.3f}   {:.3f}   {:.3f}   [{:.5f}, {:.5f}]"
+		if verb: sys.stdout.write(
+			"\robj:{:.3e}   unnorm:{:.3e}   mismatch:{:.3e}"
+			#    +"   [{:.5f}, {:.5f}]"
 			.format(
 				loss.detach().item(), 
 					unnorm_loss.detach().item(), 
 					mismatch_loss.detach().item(),
-				min(c.min() for c in cluster_data),
-				max(c.max() for c in cluster_data)
+				# min(c.min() for c in cluster_data),
+				# max(c.max() for c in cluster_data)
 			))
 
 		ozr.step(closure)
@@ -374,20 +386,22 @@ def torch_opt_clusters(M : PDG, gamma=0,
 		for (ctensor, dist) in zip(cluster_data, mu_ctree.dists):
 			# torch.nn.functional.relu(ctensor, inplace=True)
 			# ctensor[ctensor < 0] = 0
-			# dist.data = torch.clip(ctensor, min=0)
-			dist.data = torch.nn.functional.relu(ctensor)
-			# dist.data = torch.max(ctensor, 0)
+			dist.data = torch.clip(ctensor, min=0)
+			# dist.data = ctensor.clone()
 			# dist.data = ctensor
+			# dist.data = torch.nn.functional.relu(ctensor)
+			# dist.data = torch.max(ctensor, 0)
 			# print("min,max", dist.data.detach().min(), dist.data.detach().max())
 			# dist.data /= dist.data.sum()
 
-		# l = (loss + unnorm_loss + mismatch_loss).clone().detach().item()
-		# if np.abs(l - prev_loss) < loss_change_tol:
-		# 	pass
-		# prev_loss = l
+		l = (loss + unnorm_loss + mismatch_loss).clone().detach().item()
+		if np.abs(l - prev_loss) < loss_change_tol:
+			break
+			# pass
+		prev_loss = l
 
-	if verb: print("total: %d iterations (maximum %d)" % (it,max_iters))
-	if verb: print("loss: %f, Δloss: %f" %(l, prev_loss-l))
+	if verb: print("\ntotal: %d iterations (maximum %d)" % (it+1,max_iters))
+	if verb: print("loss: %E, Δloss: %f" %(l, prev_loss-l))
 
 	for dist in mu_ctree.dists:
 		dist.data = dist.data.detach() / dist.data.detach().sum()
