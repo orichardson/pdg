@@ -94,6 +94,15 @@ class PDG:
 		return N, HE
 
 	@property
+	def stats(self):
+		# TODO implement this properly
+		return dict(
+			n_edges = len(self.edges()),
+			n_worlds = int(np.prod(self.dshape)),
+			n_params = int(sum(p.size for p in self.edges('P')))
+		)
+
+	@property
 	def Ed(self):
 		return [*self.edges('l')]
 	

@@ -11,6 +11,10 @@ class RV(abc.ABC):
 class ConditionRequest(object, metaclass=utils.CopiedType):
     PARAMS = {"target", "given"}
 
+    @property
+    def name(self):
+        return self.target.name + " | "+ self.given.name
+
 
 class Variable(set, metaclass=utils.CopiedType):
     PARAMS = {'name', 'default_value'}

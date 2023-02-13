@@ -96,7 +96,7 @@ def torch_score(pdg, μ : RJD | CliqueForest, γ):
 		# print('... loss now ', loss/np.log(2))
 
 	loss /= np.log(2)
-	loss -= γ * μ.H(...)
+	# loss -= γ * μ.H(...)
 	# print('after entropy')
 	# loss -= γ * zlog( μ )
 	
@@ -292,13 +292,18 @@ def opt_dist(pdg, gamma=None,
 
 def torch_opt_clusters(M : PDG, gamma=0,
 	varname_clusters = None, cluster_edges = None,
-	iters=350,
-	**solver_kwargs) -> CliqueForest:
+	max_iters=3500, loss_change_tol = 1E-11,
+	optimizer='Adam',
+	**optimizer_kwargs) -> CliqueForest:
 	"""
 	A black-box optimization analogue of `interior_pt.cccp_opt_clusters`.
 	"""
-
-	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
+	optimizer = optimizer.lower()
+	verb=False
+	if 'verbose' in optimizer_kwargs:
+		verb = optimizer_kwargs['verbose']
+		del optimizer_kwargs['verbose']
+	
 	# 1. create tree decomposition
 	Cs, cluster_edges, edgemap, cluster_shapes = tree_decompose(
 			M, varname_clusters, cluster_edges, verb)
@@ -312,52 +317,83 @@ def torch_opt_clusters(M : PDG, gamma=0,
 		cdist /= cdist.sum()
 		cdist.requires_grad = True
 
+	ozr = Optims[optimizer](cluster_data, **optimizer_kwargs)
+
 	mu_ctree = CliqueForest([
-		RJD(cdata, [M.vars[n] for n in C], use_torch=True)
-			for (cdata,C) in zip(cluster_data,Cs)
+		RJD(torch.clip(cdata, min=0), [M.vars[n] for n in C], use_torch=True)
+			for (cdata,C) in zip(cluster_data, Cs)
 		])
 
-	ozr = torch.optim.Adam(cluster_data,lr=3E-3)
+	# ozr = torch.optim.Adam(cluster_data,lr=3E-3)
+	prev_loss = np.inf
 
-	for it in range(iters):
-		ozr.zero_grad()
+
+	def losses():
 		loss = torch_score(M, mu_ctree, gamma)
 
-		unnorm_loss = 0
 		## hack some constraints on here: match marginals along tree, + sum to 1.
+		unnorm_loss = torch.tensor(0.)
 		for dist in mu_ctree.dists:
 			unnorm_loss += torch.log(dist.data.sum()) **2 # equal to zero iff normalized
 
-
-		mismatch_loss = 0
+		mismatch_loss = torch.tensor(0.)
 		for (i,j) in mu_ctree.edges:
 			Ci = mu_ctree.dists[i]
 			Cj = mu_ctree.dists[j]			
 			S = mu_ctree.Ss[i,j]
-
-			# print(S)
-			# print(Ci, Ci.prob_matrix(*S).shape)
-			# print(Cj, Cj.prob_matrix(*S).shape)
 			mismatch_loss += ((Ci.prob_matrix(*S) - Cj.prob_matrix(*S))**2).sum()
 
-			# loss += ((Ci[S] - Cj[S])**2).sum()
-		
-		if verb: print("{:.3f}   {:.3f}   {:.3f}   [{:.5f}, {:.5f}]"
-			.format(loss.item(), unnorm_loss.item(), mismatch_loss.item(),
-				min(c.min() for c in cluster_data), max(c.max() for c in cluster_data))
-		)
-		loss += unnorm_loss + mismatch_loss
 
+		return (loss, unnorm_loss, mismatch_loss)
+		# return (torch.tensor(0.), unnorm_loss, mismatch_loss)
+
+	def closure():
+		ozr.zero_grad(set_to_none=True)
+		# ozr.zero_grad()
+		loss = sum(losses())
+		# loss.backward(retain_graph=True)
 		loss.backward()
-		ozr.step()
+		return loss
+
+	for it in range(max_iters):
+		# for cdist in cluster_data:
+		# 	cdist.requires_grad = True
+		
+		loss, unnorm_loss, mismatch_loss = losses()
+		if verb: print("{:.3f}   {:.3f}   {:.3f}   [{:.5f}, {:.5f}]"
+			.format(
+				loss.detach().item(), 
+					unnorm_loss.detach().item(), 
+					mismatch_loss.detach().item(),
+				min(c.min() for c in cluster_data),
+				max(c.max() for c in cluster_data)
+			))
+
+		ozr.step(closure)
 
 		for (ctensor, dist) in zip(cluster_data, mu_ctree.dists):
 			# torch.nn.functional.relu(ctensor, inplace=True)
 			# ctensor[ctensor < 0] = 0
-			dist.data = torch.clip(ctensor, min=0)
+			# dist.data = torch.clip(ctensor, min=0)
+			dist.data = torch.nn.functional.relu(ctensor)
+			# dist.data = torch.max(ctensor, 0)
+			# dist.data = ctensor
+			# print("min,max", dist.data.detach().min(), dist.data.detach().max())
+			# dist.data /= dist.data.sum()
 
+		# l = (loss + unnorm_loss + mismatch_loss).clone().detach().item()
+		# if np.abs(l - prev_loss) < loss_change_tol:
+		# 	pass
+		# prev_loss = l
+
+	if verb: print("total: %d iterations (maximum %d)" % (it,max_iters))
+	if verb: print("loss: %f, Δloss: %f" %(l, prev_loss-l))
+
+	for dist in mu_ctree.dists:
+		dist.data = dist.data.detach() / dist.data.detach().sum()
 
 	return mu_ctree
+
 
 	# 3. optimize over clique forest, unsafely (since constraints aren't satisfied),
 	#    but with extra loss term to try to encourage constraint satisfaction. 

@@ -419,9 +419,13 @@ class RawJointDist(Dist):
 			self.data.clone() if self._torch else self.data.copy(),
 			self.varlist, self._torch)
 		
-	def npify(self):
+	def npify(self, inplace=False):
 		data = self.data.detach().numpy() if self._torch else self.data
-		return RawJointDist(data, self.varlist, False)    
+		if inplace:
+			self.data = data
+			self._torch = False
+		else:
+			return RawJointDist(data, self.varlist, False)    
 
 	def torchify(self, requires_grad=True):
 		# """ if requires_grad is different, and already has a torch tensor
@@ -536,6 +540,7 @@ class RawJointDist(Dist):
 		idxt = self._idxs(*targetvars, multi=True)
 		idxc = self._idxs(*conditionvars, multi=True)
 		IDX = idxt + idxc
+		# UIDX = list(dict.fromkeys(IDX))
 		neitheridx =  [i for i in range(len(self.varlist)) if i not in IDX ]
 
 		
@@ -563,7 +568,6 @@ class RawJointDist(Dist):
 				normalizer = joint_expanded.sum(dim=idxt, keepdim=True)
 				matrix = (joint_expanded / normalizer).permute(IDX+neitheridx).squeeze()
 				# The torch version still has to reorder the columns...
-				# matrix = _matrix.
 			else:            
 				# if idxt is first...
 				normalizer = joint_expanded.sum(axis=tuple(i for i in range(len(idxt))), keepdims=True)
@@ -582,6 +586,7 @@ class RawJointDist(Dist):
 
 				return CPT.from_matrix(vfrom,vto, mat2,multi=False)
 		else:
+			# matrix = joint_expanded.permute(UIDX+neitheridx).squeeze() if self._torch else joint_expanded
 			matrix = joint_expanded.permute(IDX+neitheridx).squeeze() if self._torch else joint_expanded
 			
 			# return joint_expanded
@@ -761,6 +766,17 @@ class CliqueForest(Dist):
 				self.dists[j][self.Ss[i,j]])
 			for (i,j) in self.edges )
 
+	def marginal_constraint_violation(self):
+		return sum(
+			np.abs(self.dists[i].conditional_marginal(self.Ss[i,j],query_mode='ndarray')
+			 - self.dists[j].conditional_marginal(self.Ss[i,j],query_mode='ndarray')).sum()
+			for (i,j) in self.edges
+		)
+
+	def normalize(self):
+		for d in self.dists:
+			d.normalize()
+
 	@property
 	def edges(self):
 		return self.Gr.edges()
@@ -781,17 +797,22 @@ class CliqueForest(Dist):
 		other cases also!)
 		"""
 
+		# print("querying ", [v.name for v in vars])
+
 		for rjd in self.dists:
 			try:
 				## lol I don't even need to check. I can just try to do the thing.
-				# tarvars, cndvars = rjd._process_vars(vars)
-				# if not all(v in rjd for v in itertools.chain(tarvars,cndvars)):
-				# 	continue
+				tarvars, cndvars = rjd._process_vars(vars)
+				if not all(v in rjd.varlist for v in itertools.chain(tarvars,cndvars)):
+					continue
 
 				return rjd.conditional_marginal(vars, query_mode=query_mode)
 
 			except ValueError:
 				continue # this isn't the one.
+			except RuntimeError as e:
+				print("another error", e, "with rjd :", rjd)
+				raise
 
 
 		warnings.warn("Falling back on untested junction tree pgmpy query")
@@ -801,6 +822,12 @@ class CliqueForest(Dist):
 
 		# raise NotImplementedError("not all variables are in the same cluster; this doesn't work yet.")
 
+	def npify(self, inplace=True):
+		if inplace:
+			for d in self.dists:
+				d.npify(inplace=True)
+		else:
+			return CliqueForest([d for d in self.dists], self.edges)
 
 	# returns the marginal on a variable
 	def __getitem__(self, vars):
