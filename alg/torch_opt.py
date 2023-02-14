@@ -348,7 +348,9 @@ def opt_clustree(M : PDG, gamma=0,
 			Ci = mu_ctree.dists[i]
 			Cj = mu_ctree.dists[j]			
 			S = mu_ctree.Ss[i,j]
-			mismatch_loss += ((Ci.conditional_marginal(*S, query_mode="ndarray") - Cj.conditional_marginal(*S, query_mode="ndarray"))**2).sum()
+			mismatch_loss += (
+				(Ci.conditional_marginal(S, query_mode="ndarray") - 
+				Cj.conditional_marginal(S, query_mode="ndarray"))**2).sum()
 
 
 		return (loss, unnorm_loss, mismatch_loss)
