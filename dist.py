@@ -782,6 +782,13 @@ class CliqueForest(Dist):
 		return self.Gr.edges()
 
 	@property
+	def n_params(self):
+		return sum(
+			int(np.prod(dist.data.shape))
+			for dist in self.dists
+		)
+
+	@property
 	def _torch(self):
 		return all(rjd._torch for rjd in self.dists)
 
@@ -802,9 +809,11 @@ class CliqueForest(Dist):
 		for rjd in self.dists:
 			try:
 				## lol I don't even need to check. I can just try to do the thing.
-				tarvars, cndvars = rjd._process_vars(vars)
-				if not all(v in rjd.varlist for v in itertools.chain(tarvars,cndvars)):
-					continue
+				## also: the below doesn't work for some reason; I think it might
+				## not handle atoms properly.
+				# tarvars, cndvars = rjd._process_vars(vars)
+				# if not all(v in rjd.varlist for v in itertools.chain(tarvars,cndvars)):
+				# 	continue
 
 				return rjd.conditional_marginal(vars, query_mode=query_mode)
 

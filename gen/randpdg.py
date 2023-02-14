@@ -80,7 +80,7 @@ def rand_PDG( tw_range = [1,4],
 
         # pdg += CPT.make_random( reduce(and_, src, initial=Unit), reduce(and_, tgt, initial=Unit) )
         print(f"{Var.product(src).name:>20} --> {Var.product(tgt).name:<20}")
-        pdg += CPT.make_random( Var.products(src), Var.product(tgt))
+        pdg += CPT.make_random( Var.product(src), Var.product(tgt))
 
     nx.relabel_nodes(ctree, {C:tuple(pdg.varlist[i].name for i in C) for C in ctree.nodes()}, copy=False)
 
