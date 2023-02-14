@@ -348,7 +348,7 @@ def opt_clustree(M : PDG, gamma=0,
 			Ci = mu_ctree.dists[i]
 			Cj = mu_ctree.dists[j]			
 			S = mu_ctree.Ss[i,j]
-			mismatch_loss += ((Ci.prob_matrix(*S) - Cj.prob_matrix(*S))**2).sum()
+			mismatch_loss += ((Ci.conditional_marginal(*S, query_mode="ndarray") - Cj.conditional_marginal(*S, query_mode="ndarray"))**2).sum()
 
 
 		return (loss, unnorm_loss, mismatch_loss)
@@ -359,6 +359,7 @@ def opt_clustree(M : PDG, gamma=0,
 		# ozr.zero_grad()
 		for (ctensor, dist) in zip(cluster_data, mu_ctree.dists):
 			dist.data = torch.clip(ctensor, min=0)
+			# dist.data /= dist.data.sum()
 
 		loss = sum(losses())
 		# loss.backward(retain_graph=True)
@@ -382,17 +383,6 @@ def opt_clustree(M : PDG, gamma=0,
 			))
 
 		ozr.step(closure)
-
-		for (ctensor, dist) in zip(cluster_data, mu_ctree.dists):
-			# torch.nn.functional.relu(ctensor, inplace=True)
-			# ctensor[ctensor < 0] = 0
-			dist.data = torch.clip(ctensor, min=0)
-			# dist.data = ctensor.clone()
-			# dist.data = ctensor
-			# dist.data = torch.nn.functional.relu(ctensor)
-			# dist.data = torch.max(ctensor, 0)
-			# print("min,max", dist.data.detach().min(), dist.data.detach().max())
-			# dist.data /= dist.data.sum()
 
 		l = (loss + unnorm_loss + mismatch_loss).clone().detach().item()
 		if np.abs(l - prev_loss) < loss_change_tol:
