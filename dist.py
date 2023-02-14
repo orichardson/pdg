@@ -735,7 +735,10 @@ class CliqueForest(Dist):
 		else:
 			# graph is between integer indices.
 			self.Gr = nx.Graph(edges)
-			assert set(self.Gr.nodes()) == set(range(len(rjds)))
+			Gr_nodes = set(self.Gr.nodes())
+			indices = set(range(len(rjds)))
+			assert Gr_nodes.issubset(indices)
+			self.Gr.add_nodes_from( indices - Gr_nodes )
 
 		
 
@@ -849,7 +852,10 @@ class CliqueForest(Dist):
 		G = JunctionTree()
 		namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
 		G.add_nodes_from(namednodes)
-		G.add_edges_from([ (namednodes[i], namednodes[j]) for (i,j) in self.edges ])
+		G.add_edges_from([ 
+			(namednodes[i], namednodes[j]) for (i,j) in self.edges
+				if len(set(namednodes[i]) & set(namednodes[j])) > 0
+			])
 		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
 		return G
 

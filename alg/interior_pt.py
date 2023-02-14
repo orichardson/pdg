@@ -305,8 +305,11 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 				   'weight' : np.prod([len(M.vars[x]) for x in e[1]])  }
 				for e in Gr.edges() }
 		)
-		ab = nx.minimum_spanning_arborescence(Gr)
-
+		# ab = nx.minimum_spanning_arborescence(Gr)
+		ab = nx.union_all([
+			nx.minimum_spanning_arborescence(nx.induced_subgraph(Gr,nodeset))
+			for nodeset in nx.weakly_connected_components(Gr)
+		])
 
 		for i in range(m):
 			fp = reduce(mul, 
@@ -762,27 +765,30 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 	nx.set_edge_attributes(Gr, 
 		{e : {'weight' : np.prod([len(M.vars[x]) for x in e[1]]) }
 			for e in Gr.edges() })
-	ab = nx.minimum_spanning_arborescence(Gr)
-	root = next(C for C,d in ab.in_degree() if d==0) # this is the root cluster
+
+	for nodeset in nx.connected_components(Gr):
+		ab = nx.minimum_spanning_arborescence(nx.induced_subgraph(nodeset))
+
+		root = next(C for C,d in ab.in_degree() if d==0) # this is the root cluster
 
 
-	for (C_i, C_j) in ab.edges():
-		j = Cs.index(C_j)
-		common = set(C_j) & set(C_i)
-		j_common_idxs = [k for k,vn in enumerate(C_j) if vn in common]
+		for (C_i, C_j) in ab.edges():
+			j = Cs.index(C_j)
+			common = set(C_j) & set(C_i)
+			j_common_idxs = [k for k,vn in enumerate(C_j) if vn in common]
 
-		common_marg = _marginalize(mus[j], cluster_shapes[j], j_common_idxs)
+			common_marg = _marginalize(mus[j], cluster_shapes[j], j_common_idxs)
 
-		ent_tol_constraints.append(ExpCone(
-			-tts_ent[j],
-			mus[j],
-			## TODO FIXME THIS DUP IS VERY SLOW
-			_dup2shape(common_marg, cluster_shapes[j], j_common_idxs)
-		))
+			ent_tol_constraints.append(ExpCone(
+				-tts_ent[j],
+				mus[j],
+				## TODO FIXME THIS DUP IS VERY SLOW
+				_dup2shape(common_marg, cluster_shapes[j], j_common_idxs)
+			))
 
-	# one last cone to add
-	j = Cs.index(root)
-	ent_tol_constraints.append(ExpCone( -tts_ent[j], mus[j], np.ones(mus[j].shape)))
+		# one last cone to add
+		j = Cs.index(root)
+		ent_tol_constraints.append(ExpCone( -tts_ent[j], mus[j], np.ones(mus[j].shape)))
 
 
 	prev_val = np.inf
