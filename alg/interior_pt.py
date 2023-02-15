@@ -766,7 +766,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		{e : {'weight' : np.prod([len(M.vars[x]) for x in e[1]]) }
 			for e in Gr.edges() })
 
-	for nodeset in nx.connected_components(Gr):
+	for nodeset in nx.weakly_connected_components(Gr):
 		ab = nx.minimum_spanning_arborescence(nx.induced_subgraph(nodeset))
 
 		root = next(C for C,d in ab.in_degree() if d==0) # this is the root cluster
