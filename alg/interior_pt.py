@@ -474,9 +474,9 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 				)
 
 			lin_lp = cp.sum( cp.multiply(lp.reshape(-1), mu_marg(X,Y)) )
-			# oops, I think wrong quantity here. 
-			# logprobs += β * lin_lp
-			logprobs += α * gamma * lin_lp
+
+			logprobs += β * lin_lp
+			# logprobs += α * gamma * lin_lp
 
 
 
@@ -603,8 +603,8 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 				)
 
 			lin_lp = cp.sum( cp.multiply(lp.reshape(-1), mu_marg(X,Y)) )
-			# logprobs += β * lin_lp
-			logprobs += α * gamma * lin_lp
+			logprobs += β * lin_lp
+			# logprobs += α * gamma * lin_lp
 
 
 	## add entropy constraints
@@ -705,16 +705,14 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 			hard_constraints.append( mu_xy[np.argwhere(zero)] == 0 )
 
 
-		if debug_variant is None:
-			## wtf this should be wrong; it should be \alpha! see the math.
-			# Elogprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
-			Elogprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
-		else:			
-			Elogprobs += {
-				0 : α * gamma,
-				1 : β,
-				2 : -α * gamma,
-				3 : -β   } [debug_variant] * cp.multiply(lp,mu_xy)
+		# Elogprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
+		Elogprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
+		# if debug_variant:			
+		# 	Elogprobs += {
+		# 		1 : α * gamma,
+		# 		2 : β,
+		# 		3 : -α * gamma,
+		# 		4 : -β   } [debug_variant] * cp.sum(cp.multiply(lp,mu_xy))
 		
 	if verb:
 		print("CAVE edges: { "+
