@@ -654,7 +654,7 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		varname_clusters = None, cluster_edges = None,
 		# next, a very sketchy flag to be removed once we've verified that this works:
-		debug_variant=0,
+		debug_variant=None,
 		**solver_kwargs) :
 	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
 
@@ -704,18 +704,18 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 			lp = np.where(zero, 0, lp)
 			hard_constraints.append( mu_xy[np.argwhere(zero)] == 0 )
 
-		
-		if debug_variant == 0:
-			Elogprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
-		elif debug_variant == 1: 
-			Elogprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
-		elif debug_variant == 2:
-			Elogprobs -= α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
-		elif debug_variant == 3:
-			Elogprobs -= β * cp.sum( cp.multiply(lp, mu_xy ) )
-		# Elogprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
-		# Elogprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
 
+		if debug_variant is None:
+			## wtf this should be wrong; it should be \alpha! see the math.
+			# Elogprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
+			Elogprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
+		else:			
+			Elogprobs += {
+				0 : α * gamma,
+				1 : β,
+				2 : -α * gamma,
+				3 : -β   } [debug_variant] * cp.multiply(lp,mu_xy)
+		
 	if verb:
 		print("CAVE edges: { "+
 			" , ".join(
@@ -846,7 +846,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 				        max( np.sum(np.absolute(mu.value-frozen.data.reshape(-1)))
 				            for mu,frozen in zip(mus, frozens))  )
 
-		if(prob.value == prev_val) or all(
+		if len(cave_edges) == 0 or (prob.value == prev_val) or all(
 			np.sum(np.absolute(mu.value-frozen.data.reshape(-1))) <= 1E-8
 				for mu, frozen in zip(mus, frozens)):
 			break
