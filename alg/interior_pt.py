@@ -1,5 +1,6 @@
 
 from ..pdg import PDG
+from ..rv import Variable as Var
 from ..dist import CliqueForest, RawJointDist as RJD
 from .tree_decomp import tree_decompose
 
@@ -652,6 +653,8 @@ def cccp_opt_joint_parameterized(M, gamma=1, max_iters=20, **solver_kwargs):
 # best of all worlds: cccp on top of clusters
 def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		varname_clusters = None, cluster_edges = None,
+		# next, a very sketchy flag to be removed once we've verified that this works:
+		debug_variant=0,
 		**solver_kwargs) :
 	verb = 'verbose' in solver_kwargs and solver_kwargs['verbose']
 
@@ -664,7 +667,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 	cvx_tol_constraints = []
 	hard_constraints = []
 	cave_edges = []
-	logprobs = 0
+	Elogprobs = 0
 
 	for L,X,Y,α,β,p in M.edges("l,X,Y,α,β,P"):
 		if 'π' in L: continue
@@ -701,8 +704,24 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 			lp = np.where(zero, 0, lp)
 			hard_constraints.append( mu_xy[np.argwhere(zero)] == 0 )
 
-		# logprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
-		logprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
+		
+		if debug_variant == 0:
+			Elogprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
+		elif debug_variant == 1: 
+			Elogprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
+		elif debug_variant == 2:
+			Elogprobs -= α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
+		elif debug_variant == 3:
+			Elogprobs -= β * cp.sum( cp.multiply(lp, mu_xy ) )
+		# Elogprobs += β * cp.sum( cp.multiply(lp, mu_xy ) )
+		# Elogprobs += α * gamma * cp.sum( cp.multiply(lp, mu_xy ) )
+
+	if verb:
+		print("CAVE edges: { "+
+			" , ".join(
+				f"{Var.product(X).name}->{Var.product(Y).name}" 
+					for (L, X,Y, sL) in cave_edges)
+			+ "}")
 
 	local_marg_constraints = []
 	ijedges = [] # collect edges in index form also
@@ -799,6 +818,9 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		else:
 			frozens = [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)]
 
+		if verb:
+			print("cccp-iter %d (of max %d)"%(it,max_iters))
+			# print("frozens: )
 
 		linearized = sum(
 			cp.sum( cp.multiply((m - f.data.reshape(-1)), gg ))
@@ -806,7 +828,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 		)
 		prob = cp.Problem( 
 			cp.Minimize( 
-				logprobs +
+				Elogprobs +
 				linearized + 
 				sum( ss[L] * sum(tL) for L,tL in ts.items() )  
 				+ gamma * sum(cp.sum(tt) for tt in tts_ent) #entropy term
@@ -825,7 +847,7 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 				            for mu,frozen in zip(mus, frozens))  )
 
 		if(prob.value == prev_val) or all(
-			np.sum(np.absolute(mu.value-frozen.data.reshape(-1))) <= 1E-6
+			np.sum(np.absolute(mu.value-frozen.data.reshape(-1))) <= 1E-8
 				for mu, frozen in zip(mus, frozens)):
 			break
 
