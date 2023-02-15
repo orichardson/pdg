@@ -296,7 +296,7 @@ def opt_joint(pdg, gamma=None,
 
 def opt_clustree(M : PDG, gamma=0,
 	varname_clusters = None, cluster_edges = None,
-	max_iters=3500, loss_change_tol = 1E-11,
+	min_iters=10, max_iters=3500, loss_change_tol = 1E-11,
 	optimizer='Adam',
 	**optimizer_kwargs) -> CliqueForest:
 	"""
@@ -387,7 +387,7 @@ def opt_clustree(M : PDG, gamma=0,
 		ozr.step(closure)
 
 		l = (loss + unnorm_loss + mismatch_loss).clone().detach().item()
-		if np.abs(l - prev_loss) < loss_change_tol:
+		if it > min_iters and np.abs(l - prev_loss) < loss_change_tol:
 			break
 			# pass
 		prev_loss = l
