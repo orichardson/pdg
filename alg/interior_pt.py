@@ -509,7 +509,7 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 		prob.solve(**solver_kwargs)
 
 
-		if mu.value == None:
+		if mu.value is None:
 			return None
 		print('obj: ', prob.value + g(frozen), '\t\t tv distance', np.max(np.absolute(mu.value-frozen.data.reshape(-1)))  )
 		if(prob.value == prev_val) or (np.allclose(mu.value, frozen.data.reshape(-1), rtol=1E-4, atol=1E-8)):
