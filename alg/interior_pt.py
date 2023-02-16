@@ -238,6 +238,11 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
 			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
 			
+			#if(i==0 and j==1):
+			#	print('common: ', common)
+			#	print('i=0',Ci,'  |  ',cluster_shapes[i], i_idxs,'<- idxs in C0')
+			#	print('j=1',Cj,'  |  ',cluster_shapes[j], j_idxs,'<- idxs in C1')
+
 			marg_constraint = _marginalize(mus[i], cluster_shapes[i], i_idxs)\
 					== _marginalize(mus[j], cluster_shapes[j], j_idxs)
 			local_marg_constraints.append(marg_constraint)
