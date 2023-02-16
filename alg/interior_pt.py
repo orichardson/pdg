@@ -177,7 +177,7 @@ def cvx_opt_joint( M : PDG,  also_idef=True, **solver_kwargs) :
 	cvx_opt_joint.prob = prob
 	cvx_opt_joint.t = t
 	
-	return RJD(mu.value, M.varlist)
+	return RJD(mu.value, M.varlist).renormalized()
 
 # like cvx_opt_joint, but in parallel over all clusters, with consistency constraints
 def cvx_opt_clusters( M : PDG, also_idef=True, 
@@ -390,9 +390,8 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	# 	idef=new_prob.value if also_idef else float('inf') # too hard to compute
 	# )
 	## none of the above is relevant; can now compute inc & idef just fine
-	cf.normalize()
 	cf.npify(inplace=True)
-	return cf 
+	return cf.renormalized()
 
 # custom implementation of the CCCP
 def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs): 
@@ -509,12 +508,15 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 
 		prob.solve(**solver_kwargs)
 
+
+		if mu.value == None:
+			return None
 		print('obj: ', prob.value + g(frozen), '\t\t tv distance', np.max(np.absolute(mu.value-frozen.data.reshape(-1)))  )
 		if(prob.value == prev_val) or (np.allclose(mu.value, frozen.data.reshape(-1), rtol=1E-4, atol=1E-8)):
 			break
 		prev_val = prob.value
 
-	return RJD(mu.value, M.varlist)
+	return RJD(mu.value, M.varlist).renormalized()
 
 # custom CCCP but with the frozen variable as a parameter.
 # Currently is slower because the problem is not DPP in parameter :(
@@ -857,9 +859,8 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 	# 	marginals= [ RJD(mus[i].value, [M.vars[vn] for vn in C]) for i,C in enumerate(Cs)],
 	# 	cluster_dist = cf,
 	# 	value=prob.value)
-	cf.normalize()
 	cf.npify(inplace=True)
-	return cf 
+	return cf.renormalized()
 
 
 # Direct encoding of the objective. Cvxpy cannot solve!

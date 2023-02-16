@@ -287,7 +287,7 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 
 	@classmethod
 	def make_stoch(cls: Type[SubCPT], nfrom, nto, matrix, multi=True, flatten=False) -> SubCPT:
-		return cls._from_matrix_inner(nfrom,nto,matrix,multi,flatten).renormalize()
+		return cls._from_matrix_inner(nfrom,nto,matrix,multi,flatten).renormalized()
 
 	@classmethod
 	def from_ddict(cls: Type[SubCPT], nfrom, nto, data) -> SubCPT:
@@ -316,7 +316,7 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 	def make_random(cls : Type[SubCPT], vfrom, vto):
 		mat = np.random.rand(len(vfrom), len(vto))
 		# mat /= mat.sum(axis=1, keepdims=True)
-		return cls._from_matrix_inner(vfrom,vto,mat).renormalize()
+		return cls._from_matrix_inner(vfrom,vto,mat).renormalized()
 
 	@classmethod
 	def det(cls: Type[SubCPT], vfrom, vto, mapping, **kwargs) -> SubCPT:
@@ -363,7 +363,7 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 
 		return self
 
-	def renormalize(self):
+	def renormalized(self):
 		self /= np.sum(self, axis=1).to_numpy()[:, None]
 		return self
 		
@@ -526,7 +526,7 @@ class RawJointDist(Dist):
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		return broadcast(cpt, self.varlist, vfrom, vto)
 
-	def normalize(self):
+	def renormalized(self):
 		self.data /= self.data.sum()
 		return self
 
@@ -776,9 +776,10 @@ class CliqueForest(Dist):
 			for (i,j) in self.edges
 		)
 
-	def normalize(self):
+	def renormalized(self):
 		for d in self.dists:
-			d.normalize()
+			d.renormalized()
+		return self
 
 	@property
 	def edges(self):

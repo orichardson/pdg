@@ -290,7 +290,7 @@ def opt_joint(pdg, gamma=None,
 	to_ret = ()
 	if ret_iterates: to_ret += (iterates,)
 	if ret_losses: to_ret += (losses,)
-	return (μ,)+to_ret if len(to_ret) else μ
+	return (μ.renormalized(),)+to_ret if len(to_ret) else μ
 
 
 
