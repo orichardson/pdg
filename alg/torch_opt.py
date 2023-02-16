@@ -296,7 +296,7 @@ def opt_joint(pdg, gamma=None,
 
 def opt_clustree(M : PDG, gamma=0,
 	varname_clusters = None, cluster_edges = None,
-	min_iters=10, max_iters=3500, loss_change_tol = 1E-11,
+	min_iters=10, max_iters=1500, loss_change_tol = 1E-9,
 	optimizer='Adam',
 	**optimizer_kwargs) -> CliqueForest:
 	"""
