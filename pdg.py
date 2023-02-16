@@ -1329,4 +1329,4 @@ class PDG:
 				raise ValueError("given clusters don't cover cpd '%s'(%s|%s) "%(L,X.name,Y.name))
 
 		return CliqueForest(dists, 
-			ctree.relabel_nodes({vl:i for i,vl in enumerate(ctree.nodes())}))
+			nx.relabel_nodes(ctree, {vl:i for i,vl in enumerate(ctree.nodes())}))
