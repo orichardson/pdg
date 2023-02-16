@@ -96,7 +96,7 @@ def torch_score(pdg, μ : Union[RJD,CliqueForest], γ):
 		# print('... loss now ', loss/np.log(2))
 
 	loss /= np.log(2)
-	# loss -= γ * μ.H(...)
+	loss -= γ * μ.H(...)
 	# print('after entropy')
 	# loss -= γ * zlog( μ )
 	
