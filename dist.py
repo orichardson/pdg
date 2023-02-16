@@ -851,6 +851,7 @@ class CliqueForest(Dist):
 
 
 	def to_pgmpy_jtree(self):
+		""" may not be connected """
 		from pgmpy.models import JunctionTree
 
 		G = JunctionTree()
@@ -863,6 +864,25 @@ class CliqueForest(Dist):
 		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
 		return G
 
+	def to_pgmpy_jtrees(self):
+		""" one for each subcomponent """
+		from pgmpy.models import JunctionTree
+
+		jj = []
+		for idxset in nx.connected_components(self.Gr):
+			G = JunctionTree()
+			namednodes = [ tuple(v.name for v in self.dists[i].varlist) for i in idxset ]
+			G.add_nodes_from(namednodes)
+			G.add_edges_from([ 
+				(namednodes[i], namednodes[j]) for (i,j) in self.edges
+					if len(set(namednodes[i]) & set(namednodes[j])) > 0
+					and i in idxset and j in idxset
+				])
+			G.add_factors(*[self.dists[i].to_pgmpy_discrete_factor() for i in idxset])
+			jj.append(G)
+
+		return jj
+
 	def _fallback_joint_query_bp(self, varilist):
 		J = self.to_pgmpy_jtree()
 		bp = BeliefPropagation(J)
@@ -871,9 +891,9 @@ class CliqueForest(Dist):
 		return RawJointDist(ans.values, varilist)
     
 	def _fallback_recalibrate_bp(self):
-		J = self.to_pgmpy_jtree()
-
-		jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
+		# J = self.to_pgmpy_jtree()
+		# jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
+		jj = self.to_pgmpy_jtrees()
 
 		for j in jj:
 			bp = BeliefPropagation(j)
