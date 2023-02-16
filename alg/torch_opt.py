@@ -329,7 +329,9 @@ def opt_clustree(M : PDG, gamma=0,
 			# cdata,
 			 [M.vars[n] for n in C], use_torch=True)
 			for (cdata,C) in zip(cluster_data, Cs)
-		])
+		]
+		## TODO: add relabel with ctree. First, refactor deompose to return a ctree.
+		)
 
 	# ozr = torch.optim.Adam(cluster_data,lr=3E-3)
 	prev_loss = np.inf
@@ -341,7 +343,7 @@ def opt_clustree(M : PDG, gamma=0,
 		## hack some constraints on here: match marginals along tree, + sum to 1.
 		unnorm_loss = torch.tensor(0.)
 		for dist in mu_ctree.dists:
-			unnorm_loss += 5 * torch.log(dist.data.sum()) **2 # equal to zero iff normalized
+			unnorm_loss += torch.log(dist.data.sum()) **2 # equal to zero iff normalized
 
 		mismatch_loss = torch.tensor(0.)
 		for (i,j) in mu_ctree.edges:
@@ -349,8 +351,8 @@ def opt_clustree(M : PDG, gamma=0,
 			Cj = mu_ctree.dists[j]			
 			S = mu_ctree.Ss[i,j]
 			mismatch_loss += (
-				10 * (Ci.conditional_marginal(S, query_mode="ndarray") - 
-				Cj.conditional_marginal(S, query_mode="ndarray"))**4).sum()
+				np.exp((Ci.conditional_marginal(S, query_mode="ndarray") - 
+				Cj.conditional_marginal(S, query_mode="ndarray"))**2) - 1).sum()
 
 
 		return (loss, unnorm_loss, mismatch_loss)

@@ -900,7 +900,7 @@ class CliqueForest(Dist):
 
 			bp.calibrate()
 			for varname_tuple, df in bp.clique_beliefs.items():
-				self.dists[self.lookup[frozenset(varname_tuple)]].data = df.values
+				self.dists[self.lookup[frozenset(varname_tuple)]].data[:] = df.values[:]
 
 	
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
