@@ -1,5 +1,8 @@
 import pandas as pd
 import numpy as np
+import networkx as nx
+
+from pgmpy.inference.ExactInference import BeliefPropagation
 
 from abc import ABC
 from typing import FrozenSet, List, Type, TypeVar# , Union, Mapping
@@ -16,9 +19,8 @@ import warnings
 import itertools
 import re
 	
-import networkx as nx
-import seaborn as sns
-greens = sns.light_palette("green", as_cmap=True)
+
+
 
 
 try:
@@ -703,9 +705,9 @@ class RawJointDist(Dist):
 		return RawJointDist(data / np.sum(data), varlist)
 
 
-def _key(rjd : RawJointDist) -> FrozenSet:
-	"""turns RawJointDist's variable list into a hashable key""" 
-	return frozenset(rjd.varlist)
+# def _key(rjd : RawJointDist) -> FrozenSet:
+# 	"""turns RawJointDist's variable list into a hashable key""" 
+# 	return frozenset(rjd.varlist)
 
 
 class CliqueForest(Dist):
@@ -713,7 +715,8 @@ class CliqueForest(Dist):
 		# self.dists = { _key(rjd) : rjd for rjd in rjds }
 		# self.dists = 
 		self.dists = rjds # a list of RawJointDist, so that C[i] is the ith cluster.
-		self.lookup = { _key(rjd) : i for i,rjd in enumerate(rjds) }
+		self.lookup = { frozenset([v.name for v in rjd.varlist]) : i 
+			for i,rjd in enumerate(rjds) }
 
 			# self.keys_big2small = sorted(
 		# 	(frozenset([V.name for V in rjd.varlist]) for rjd in rjds),
@@ -862,11 +865,22 @@ class CliqueForest(Dist):
 
 	def _fallback_joint_query_bp(self, varilist):
 		J = self.to_pgmpy_jtree()
-		from pgmpy.inference.ExactInference import BeliefPropagation
 		bp = BeliefPropagation(J)
 
 		ans = bp.query([v.name for v in varilist])
 		return RawJointDist(ans.values, varilist)
+    
+	def _fallback_recalibrate_bp(self):
+		J = self.to_pgmpy_jtree()
+
+		jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
+
+		for j in jj:
+			bp = BeliefPropagation(j)
+
+			bp.calibrate()
+			for varname_tuple, df in bp.clique_beliefs.items():
+				self.dists[self.lookup[frozenset(varname_tuple)]].data = df.values
 
 	
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
