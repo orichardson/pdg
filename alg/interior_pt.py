@@ -229,14 +229,16 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 	ijedges = [] # collect edges in index form also
 
 	for Ci, Cj in cluster_edges:
-		common = set(Ci) & set(Cj)
+		common = list(set(Ci) & set(Cj))
 		if len(common) > 0:
 			# Add a constraint that the marginals of these two clusters agree.
 			i, j = Cs.index(Ci), Cs.index(Cj)
 			ijedges.append((i,j))
 
-			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
-			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
+			# i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
+			# j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
+			i_idxs = [Ci.index(vn) for vn in common]
+			j_idxs = [Cj.index(vn) for vn in common]
 			
 			#if(i==0 and j==1):
 			#	print('common: ', common)
@@ -337,8 +339,10 @@ def cvx_opt_clusters( M : PDG, also_idef=True,
 				# 		and ((Cs[i],Cs[j]) in cluster_edges or (Cs[j], Cs[i]) in cluster_edges):
 				if (Cs[j], Cs[i]) in ab.edges():
 					# print("Correction along edge (%d-%d)"%(i,j))
-					common = set(Cs[i]) & set(Cs[j])
-					idxs = [k for k,vn in enumerate(Cs[i]) if vn in common]
+					common = list(set(Cs[i]) & set(Cs[j]))
+					# idxs = [k for k,vn in enumerate(Cs[i]) if vn in common]
+					idxs = [Cs[i].index(vn) for vn in common]
+
 					if len(common) > 0:
 						new_term = _marginalize(mus[i], cluster_shapes[i], idxs)
 						
@@ -733,13 +737,15 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 
 	
 	for Ci, Cj in cluster_edges:
-		common = set(Ci) & set(Cj)
+		common = list(set(Ci) & set(Cj))
 		if len(common) > 0:
 			i, j = Cs.index(Ci), Cs.index(Cj)
 			ijedges.append((i,j))
 
-			i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
-			j_idxs = [k for k,vn in enumerate(Cj) if vn in common]
+			# i_idxs = [k for k,vn in enumerate(Ci) if vn in common]
+			# j_idxs = [k for k,vn in enumerate(Cj) if vn in common]			
+			i_idxs = [Ci.index(vn) for vn in common]
+			j_idxs = [Cj.index(vn) for vn in common]			
 			
 			local_marg_constraints.append(
 					_marginalize(mus[i], cluster_shapes[i], i_idxs)
@@ -798,8 +804,9 @@ def cccp_opt_clusters( M : PDG, gamma=1, max_iters=20,
 
 		for (C_i, C_j) in ab.edges():
 			j = Cs.index(C_j)
-			common = set(C_j) & set(C_i)
-			j_common_idxs = [k for k,vn in enumerate(C_j) if vn in common]
+			common = list(set(C_j) & set(C_i))
+			# j_common_idxs = [k for k,vn in enumerate(C_j) if vn in common]
+			j_common_idxs = [C_j.index(vn) for vn in common]
 
 			common_marg = _marginalize(mus[j], cluster_shapes[j], j_common_idxs)
 
