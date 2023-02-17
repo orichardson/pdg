@@ -19,9 +19,7 @@ import warnings
 import itertools
 import re
 	
-
-
-
+from .alg.bp import avg_init_pgmpy_BP_calibrate
 
 try:
 	from pgmpy.factors.discrete import TabularCPD
@@ -896,12 +894,18 @@ class CliqueForest(Dist):
 		jj = self.to_pgmpy_jtrees()
 
 		for j in jj:
-			bp = BeliefPropagation(j)
+			# bp = BeliefPropagation(j)
+			# bp.calibrate()
+			bp = avg_init_pgmpy_BP_calibrate(j)
 
-			bp.calibrate()
 			for varname_tuple, df in bp.clique_beliefs.items():
-				self.dists[self.lookup[frozenset(varname_tuple)]].data[:] = df.values[:]
-
+				i = self.lookup[frozenset(varname_tuple)]
+				idx1 = [*range(len(self.dists[i].varlist))]
+				idx2 = [df.variables.index(v.name) for v in self.dists[i].varlist]
+				self.dists[i].data[:] = \
+					np.moveaxis(df.values, idx2,idx1)
+		
+		self.renormalized()
 	
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		return broadcast(cpt, self.varlist, vfrom, vto)
