@@ -888,15 +888,17 @@ class CliqueForest(Dist):
 		ans = bp.query([v.name for v in varilist])
 		return RawJointDist(ans.values, varilist)
     
-	def _fallback_recalibrate_bp(self):
+	def _fallback_recalibrate_bp(self,avg_init=True):
 		# J = self.to_pgmpy_jtree()
 		# jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
 		jj = self.to_pgmpy_jtrees()
 
 		for j in jj:
-			# bp = BeliefPropagation(j)
-			# bp.calibrate()
-			bp = avg_init_pgmpy_BP_calibrate(j)
+			if avg_init:
+				bp = avg_init_pgmpy_BP_calibrate(j)
+			else:
+				bp = BeliefPropagation(j)
+				bp.calibrate()
 
 			for varname_tuple, df in bp.clique_beliefs.items():
 				i = self.lookup[frozenset(varname_tuple)]
