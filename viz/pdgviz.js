@@ -361,7 +361,7 @@ $(function() {
 			
 			action.targets.forEach(n => {
 				[n.x, n.y] = addv(n.old_pos, mouse_end, scale(action.mouse_start, -1)); 
-				if(pdg.sim_mode === "linknodes only" && !n.link) {
+				if(n.anchored || (pdg.sim_mode === "linknodes only" && !n.link)) {
 					[n.fx, n.fy] = [n.x,n.y];
 				}
 				delete n.old_pos;
