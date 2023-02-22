@@ -16,7 +16,7 @@ from numbers import Number
 from .utils import dictwo
 from .rv import Variable, ConditionRequest, Unit
 from .fg import FactorGraph
-from .dist import RawJointDist as RJD, CPT #, Dist, CDist,
+from .dist import RawJointDist as RJD, CPT, CliqueForest#, Dist, CDist,
 from .dist import z_mult, zz1_div
 
 
@@ -1281,5 +1281,52 @@ class PDG:
 			mn.add_edges_from(combinations(scope,2));
 			mn.add_factors( DiscreteFactor(scope, card, cpt.to_numpy() ** power ))
 
-		# raise NotImplemented
+		# this is very stupid, but apparently all variables need factors
+		# (because variables are just strings, so you don't know how many
+		# values you have to make a distribution until all vars have factors).
+		# Anyways, we go multiplying by one ...
+		for vn in set(mn.nodes()) - set(mn.get_cardinality().keys()):
+			vl = len(self.vars[vn])
+			mn.add_factors( DiscreteFactor([vn], [vl], np.ones(vl)))
+
 		return mn
+
+	def to_markov_nets(self, via='β'):
+		mm = self.to_markov_net(via=via)
+
+		mms = [mm.subgraph(nodeset) for nodeset in nx.connected_components(mm)]
+
+		for f in mm.factors:
+			for mmi in mms:
+				if set(mmi.nodes()).issuperset(f.variables):
+					mmi.add_factors(f)
+					break
+			else:
+				assert False
+		
+		return mms
+
+	def to_uncalibrated_cforest(self, ctree, via="β"):
+		dists = []
+
+		for vvv in ctree.nodes():
+			f = np.ones(tuple(
+					len(self.vars[v]) for v in vvv
+				))
+
+			rjd = RJD(f, [self.vars[v] for v in vvv])
+			dists.append(rjd)
+
+		for L,X,Y,cpt,power in self.edges("LXYP"+via):
+			if L[0] == 'π': #  (it's a projection)
+				continue 
+
+			for d in dists:
+				if set((X&Y).atoms).issubset(d.varlist):
+					d.data *= cpt.broadcast_to(d.varlist)
+					break
+			else:
+				raise ValueError("given clusters don't cover cpd '%s'(%s|%s) "%(L,X.name,Y.name))
+
+		return CliqueForest(dists, 
+			nx.relabel_nodes(ctree, {vl:i for i,vl in enumerate(ctree.nodes())}))

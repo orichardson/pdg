@@ -19,9 +19,7 @@ import warnings
 import itertools
 import re
 	
-
-
-
+from .alg.bp import avg_init_pgmpy_BP_calibrate
 
 try:
 	from pgmpy.factors.discrete import TabularCPD
@@ -851,6 +849,7 @@ class CliqueForest(Dist):
 
 
 	def to_pgmpy_jtree(self):
+		""" may not be connected """
 		from pgmpy.models import JunctionTree
 
 		G = JunctionTree()
@@ -863,6 +862,25 @@ class CliqueForest(Dist):
 		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
 		return G
 
+	def to_pgmpy_jtrees(self):
+		""" one for each subcomponent """
+		from pgmpy.models import JunctionTree
+
+		jj = []
+		for idxset in nx.connected_components(self.Gr):
+			G = JunctionTree()
+			namednodes = [ tuple(v.name for v in self.dists[i].varlist) for i in idxset ]
+			G.add_nodes_from(namednodes)
+			G.add_edges_from([ 
+				(namednodes[i], namednodes[j]) for (i,j) in self.edges
+					if len(set(namednodes[i]) & set(namednodes[j])) > 0
+					and i in idxset and j in idxset
+				])
+			G.add_factors(*[self.dists[i].to_pgmpy_discrete_factor() for i in idxset])
+			jj.append(G)
+
+		return jj
+
 	def _fallback_joint_query_bp(self, varilist):
 		J = self.to_pgmpy_jtree()
 		bp = BeliefPropagation(J)
@@ -870,18 +888,26 @@ class CliqueForest(Dist):
 		ans = bp.query([v.name for v in varilist])
 		return RawJointDist(ans.values, varilist)
     
-	def _fallback_recalibrate_bp(self):
-		J = self.to_pgmpy_jtree()
-
-		jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
+	def _fallback_recalibrate_bp(self,avg_init=True):
+		# J = self.to_pgmpy_jtree()
+		# jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
+		jj = self.to_pgmpy_jtrees()
 
 		for j in jj:
-			bp = BeliefPropagation(j)
+			if avg_init:
+				bp = avg_init_pgmpy_BP_calibrate(j)
+			else:
+				bp = BeliefPropagation(j)
+				bp.calibrate()
 
-			bp.calibrate()
 			for varname_tuple, df in bp.clique_beliefs.items():
-				self.dists[self.lookup[frozenset(varname_tuple)]].data = df.values
-
+				i = self.lookup[frozenset(varname_tuple)]
+				idx1 = [*range(len(self.dists[i].varlist))]
+				idx2 = [df.variables.index(v.name) for v in self.dists[i].varlist]
+				self.dists[i].data[:] = \
+					np.moveaxis(df.values, idx2,idx1)
+		
+		self.renormalized()
 	
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		return broadcast(cpt, self.varlist, vfrom, vto)
