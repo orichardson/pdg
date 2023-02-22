@@ -310,7 +310,10 @@ $(function() {
 			
 		} else { // nothing selected; create new variable here.
 			setTimeout(function() {
-				let name = promptForName("Enter A Variable Name", fresh_node_name(), pdg.all_node_ids);
+				let name = promptForName("Enter A Variable Name",
+					// fresh_node_name(), 
+					pdg.fresh_label(),
+					pdg.all_node_ids);
 				if(!name) return;
 				
 				newtgt = pdg.new_node(name, e.x, e.y);
