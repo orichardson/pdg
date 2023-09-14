@@ -312,7 +312,7 @@ $(function() {
 			setTimeout(function() {
 				let name = promptForName("Enter A Variable Name",
 					// fresh_node_name(), 
-					pdg.fresh_label(),
+					pdg.fresh_node_name(),
 					pdg.all_node_ids);
 				if(!name) return;
 				

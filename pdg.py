@@ -386,6 +386,7 @@ class PDG:
 			for o in data:
 				self.add_data(o, label)
 		elif type(data) is dict:
+			# note: still handles \beta and \alpha properly.
 			if 'from' in data and 'to' in data:
 				X = data['from'], Y = data['to']
 				if isinstance(X, Variable): XN = X.name
@@ -395,6 +396,8 @@ class PDG:
 				YN = data['cpd'].nto.name
 			if 'label' in data:
 				label = data['label']
+			else:
+				label = self.labeler.fresh(XN, YN)
 
 			self._set_edge(XN, YN, label, **dictwo(data, ('from', 'to', 'label')))
 
@@ -917,7 +920,9 @@ class PDG:
 
 		idef = idef/np.log(2) -  mu.H(...)
 		return idef 
-		
+
+	def scoreII(self, mu, gamma):
+		return self.Inc(mu) + self.IDef(mu) * gamma		
 
 	####### SEMANTICS 3 ##########
 	def optimize_score(self, gamma, repr="atomic", store_iters=False, **solver_kwargs ):

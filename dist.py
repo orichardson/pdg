@@ -5,7 +5,7 @@ import networkx as nx
 from pgmpy.inference.ExactInference import BeliefPropagation
 
 from abc import ABC
-from typing import FrozenSet, List, Type, TypeVar# , Union, Mapping
+from typing import FrozenSet, List, Type, TypeVar, Mapping
 import collections
 
 from functools import reduce
@@ -293,7 +293,7 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 	def from_ddict(cls: Type[SubCPT], nfrom, nto, data) -> SubCPT:
 		for a in nfrom:
 			row = data[a]
-			if not isinstance(row, collections.Mapping):
+			if not isinstance(row, Mapping):
 				try:
 					iter(row)
 				except:
@@ -343,6 +343,11 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 
 		return cls.from_matrix(src, tgt, 
 			np.moveaxis(tcpd.values,0,-1).reshape(-1, len(tgt)), **kwargs)
+	
+	################################
+
+	def copy(self, deep=True):
+		return CPT(self, nto=self.nto,nfrom=self.nfrom)
 
 	def to_pgmpy(self):
 		return TabularCPD(self.nto.name, len(self.nto), 

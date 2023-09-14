@@ -426,7 +426,7 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 		sL = (β - gamma * α)
 
 		if sL >= 0: # this part is convex
-			print("(vex)   ", L, '\t', sL)
+			# print("(vex)   ", L, '\t', sL)
 
 			t[L] = cp.Variable(p.to_numpy().size)
 			cone = ExpCone(-t[L], 
@@ -437,7 +437,7 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 
 		else: # this part is concave
 			cave_edges.append((L,X,Y,sL))
-			print("(cave)  ", L, '\t', sL)
+			# print("(cave)  ", L, '\t', sL)
 
 
 	from ..dist import zz1_div, z_mult, D_KL
@@ -520,12 +520,93 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 
 		if mu.value is None:
 			return None
-		print('obj: ', prob.value + g(frozen), '\t\t tv distance', np.max(np.absolute(mu.value-frozen.data.reshape(-1)))  )
+		# print('obj: ', prob.value + g(frozen), '\t\t tv distance', np.max(np.absolute(mu.value-frozen.data.reshape(-1)))  )
 		if(prob.value == prev_val) or (np.allclose(mu.value, frozen.data.reshape(-1), rtol=1E-4, atol=1E-8)):
 			break
 		prev_val = prob.value
 
 	return RJD(mu.value, M.varlist).renormalized()
+
+
+# custom implementation of the CCCP
+def mk_joint_cvx_problem(M, gamma=1): 
+	"""
+	return the components of the optimization problem [[ M ]]_\gamma,
+	but do not solve it. 
+	""" 
+	n = np.prod(M.dshape)
+	mu = cp.Variable(n, nonneg=True)
+
+	# keys for both dicts (s, t) are the "convex" edge labels,
+	#   i.e., those with β >= α γ
+	t = {}
+	s = {} 
+
+	def mu_marg(*varis):
+		return _marginalize(mu, M.dshape, M._idxs(*varis))
+
+	cvx_tol_constraints = []
+
+	for L,X,Y,α,β,p in M.edges("l,X,Y,α,β,P"):
+		if 'π' in L: continue
+		sL = (β - gamma * α)
+
+		if sL >= 0: # this part is convex
+
+			t[L] = cp.Variable(p.to_numpy().size)
+			cone = ExpCone(-t[L], 
+					mu_marg(X,Y),
+					cp.vec(_cpd2joint_np(np.ones(p.shape), mu_marg(X)))	) 
+			s[L] = sL
+			cvx_tol_constraints.append(cone)
+
+		else: # this part is concave
+			raise ValueError("PDG objective is not convex")
+
+	hard_constraints = []
+	logprobs = 0
+	for L,X,Y,β,p in M.edges("l,X,Y,α,P"):
+		if 'π' not in L:
+			p = p.to_numpy()
+			zero = (p == 0)
+			lp = - np.ma.log(p)
+
+			if(np.any(zero)):
+				lp = np.where(zero, 0, lp)
+
+				hard_constraints.append(
+					mu_marg(X,Y)[np.argwhere(p.reshape(-1)==0)] == 0
+				)
+
+			lin_lp = cp.sum( cp.multiply(lp.reshape(-1), mu_marg(X,Y)) )
+			logprobs += β * lin_lp
+
+	## add entropy constraint
+	global_t_ent = cp.Variable(n)
+
+	return dict(prob=cp.Problem( 
+		cp.Minimize( 
+			logprobs +
+			sum( s[L] * sum(t[L]) for L,tL in t.items() ) 
+			+ gamma * cp.sum(global_t_ent) # entropy term
+		),
+		cvx_tol_constraints 
+			+ hard_constraints
+			+ [sum(mu) == 1]
+			+ [ ExpCone(-global_t_ent, mu, np.ones(mu.shape)) ] 
+		),
+		mu=mu,
+		mu_marg=mu_marg
+	)
+
+def inc(M, gamma, clique_tree=False):
+	if clique_tree:
+		pass
+	else:
+		## TODO: faster would be to just return the problem.value from the optimization.
+		rjd = cccp_opt_joint(M, gamma)
+		return M.Inc(rjd) + gamma*M.IDef(rjd)
+
 
 # custom CCCP but with the frozen variable as a parameter.
 # Currently is slower because the problem is not DPP in parameter :(
