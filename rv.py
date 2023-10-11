@@ -104,8 +104,13 @@ class Variable(set, metaclass=utils.CopiedType):
         return ConditionRequest(target=self,given=other)
 
     def __eq__(self, other):
-        return isinstance(other, Variable) and set.__eq__(self, other) and (
-                self.name == other.name if hasattr(self,"name") else True)
+        if isinstance(other,Variable):
+            named = hasattr(self,"name")
+            nameeq = named == hasattr(other,"name")
+            return set.__eq__(self,other) and nameeq and (self.name == other.name if named else True)
+
+        # return isinstance(other, Variable) and set.__eq__(self, other) and (
+        #         self.name == other.name if hasattr(self,"name") else True)
 
     def __hash__(self):
         return hash( (frozenset(self), ) + ((self.name,) if hasattr(self,'name') else ()))

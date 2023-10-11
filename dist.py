@@ -364,7 +364,7 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 	def check_normalized(self) -> bool:
 		amt = np.where(np.all(np.isfinite(self),axis=1), (np.sum(self, axis=1)-1)**2 ,0).sum()
 		if amt > 1E-5:
-			warnings.warn("%.2f-Unnormalized CPT"%amt)
+			warnings.warn("%.4f-Unnormalized CPT"%amt)
 
 		return self
 
@@ -397,7 +397,7 @@ def _definitely_a_list( somedata ):
 
 
 
-# define an event to be a value of a random variale.
+# define an event to be a value of a random variable.
 class RawJointDist(Dist):
 	def __init__(self, data, varlist, use_torch=False):
 		if use_torch and not torch.is_tensor(data):
@@ -424,6 +424,7 @@ class RawJointDist(Dist):
 			self.data.clone() if self._torch else self.data.copy(),
 			self.varlist, self._torch)
 		
+	############# CONVERSIONS #################
 	def npify(self, inplace=False):
 		data = self.data.detach().numpy() if self._torch else self.data
 		if inplace:
@@ -446,6 +447,15 @@ class RawJointDist(Dist):
 			data = torch.tensor(self.data, requires_grad=requires_grad)
 			
 		return RawJointDist(data, self.varlist, True)    
+	
+	def to_dit(self):
+		from dit import Distribution
+		import itertools as itt
+
+		data = self.data.detach().numpy() if self._torch else self.data
+
+		return Distribution([tuple(str(v) for v in p) for p in itt.product(*self.varlist)],
+					  		data.flat)
 	
 	def require_grad(self):
 		""" an in-place method to re-enable gradients. """
@@ -476,7 +486,8 @@ class RawJointDist(Dist):
 		return RawJointDist(self.data * other, self.varlist)
 
 	def __pos__(self):
-		return self.normalize()
+		return self.renormalized()
+	
 	def __floordiv__(self,other):
 		if self._torch and other._torch:
 			return D_KL_torch(self.data, other.data)
@@ -530,10 +541,28 @@ class RawJointDist(Dist):
 
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		return broadcast(cpt, self.varlist, vfrom, vto)
+	
+
+	####################### OPERATIONS #######################
+
+	def subdist_expand(self):
+		ar = np.zeros(tuple(d+1 for d in self.data.shape))
+		ar[tuple(-1 for d in self.data.shape)] = 1 - self.data.sum()
+		ar[tuple(slice(0,d) for d in self.data.shape)] = self.data
+
+		nullvarlist = [
+			Var(V | {'∅'}, name=V.name, default_value='∅')
+				for V in self.varlist
+		]
+
+		return RawJointDist(ar, nullvarlist)
+
 
 	def renormalized(self):
 		self.data /= self.data.sum()
 		return self
+	
+	################### MARGINALIZATION, INFERENCE QUERIES ##################
 
 	def conditional_marginal(self, vars, query_mode=None):
 		if query_mode is None: query_mode = self._query_mode
@@ -640,6 +669,8 @@ class RawJointDist(Dist):
 		return collapsed
 	
 
+	####################### INFORMATION QUERIES #####################
+
 	def H(self, *vars, base=2, given=None):
 		""" Computes the entropy, or conditional
 		entropy of the list of variables, given all those
@@ -656,12 +687,16 @@ class RawJointDist(Dist):
 		# collapsed = self.prob_matrix(vars)
 		# surprise = - np.ma.log( collapsed ) / np.log(base)		raise NotImplemented
 
+	def I(self, *vars, given=None):
+		tarvars, cndvars = self._process_vars(vars, given)
+
+		tot = 0
 		# n = len(tarvars)
 
 		for s in powerset(tarvars):
 			# print(s, (-1)**(n-len(s)), self.H(*s, given=cndvars))
-			sum += (-1)**(len(s)+1) * self.H(*s, given=cndvars) # sum += (-1)**(n-len(s)+1) * self.H(*s, given=cndvars)
-		return sum
+			tot += (-1)**(len(s)+1) * self.H(*s, given=cndvars) # sum += (-1)**(n-len(s)+1) * self.H(*s, given=cndvars)
+		return tot
 
 	# def _info_in(self, vars_in, vars_fixed):
 		# return self.H(vars_in | vars_fixed)
@@ -711,7 +746,8 @@ class RawJointDist(Dist):
 # def _key(rjd : RawJointDist) -> FrozenSet:
 # 	"""turns RawJointDist's variable list into a hashable key""" 
 # 	return frozenset(rjd.varlist)
-
+class RawSubDist(Dist):
+	pass
 
 class CliqueForest(Dist):
 	def __init__(self, rjds : List[RawJointDist], edges=None):
