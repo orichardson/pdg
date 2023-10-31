@@ -33,7 +33,7 @@ class DHyperGraph(object):
             if not isinstance(tgts, Collection): tgts = [tgts]
             self.hyperedges[l] = Arc(srcs,tgts)
 
-        print(self.hyperedges)
+        # print(self.hyperedges)
         
         if nodes is None:
             self.nodes = set()
@@ -87,7 +87,7 @@ def t1(n):  # a tuple of ones of length n
     return tuple(1 for i in range(n))
 
 
-def find_witness( mu : RJD, Ar: DHyperGraph, N_ITERS=500):
+def find_witness( mu : RJD, Ar: DHyperGraph, N_ITERS=500, verbose=False):
     varlookup = { V.name : V for V in mu.varlist }
     name2idx = { V.name : i for (i,V) in enumerate(mu.varlist) }
     M = len(Ar.hyperedges)
@@ -96,9 +96,11 @@ def find_witness( mu : RJD, Ar: DHyperGraph, N_ITERS=500):
     Xnull = [ Var(set(X) | { None }, name=X.name+"'") for X in mu.varlist]
     Fs = []
     logQ_params = []
-    # logQ_normalized = []
+
+    if verbose: print("SETUP...")
 
     for i, (l, a) in enumerate(Ar.labeled_arcs):
+        if verbose: print("\t", a)
         # Svals = itt.product(varlookup[Sn] for Sn in Sns)
         # Sjoint = Var.product(varlookup[Sn] for Sn in a.srcs)
         # Tjoint = Var.product(varlookup[Tn] for Tn in a.tgts)
@@ -127,7 +129,17 @@ def find_witness( mu : RJD, Ar: DHyperGraph, N_ITERS=500):
     Xind = {}
     logQQs = {}
 
+    if verbose: 
+        print("LOGQQ SETUP...")
+        print("now, loop that takes %d iterations" % int(np.prod([len(X) for X in Fs])) )
+        print("each constructs R of shape ", tuple(1 for X in Xnull))
+        counter = 0
+
     for fs in itt.product(*Fs):
+        if verbose:
+            counter += 1
+            if counter % 100 == 0:
+                print(counter, end='\r')
         # Step 1: figure out the set of fixedpts 
         # build relation on X's for this setting of f's. 
         # That is, want R[X1... Xn] = [1 if f_a(S_a) = T_a forall a, else 0].
@@ -163,11 +175,13 @@ def find_witness( mu : RJD, Ar: DHyperGraph, N_ITERS=500):
         Xind[fs] = R_coo.indices()
 
 
+    if verbose: print("SETUP COMPLETE")
     ozr = torch.optim.Adam( logQ_params + list(logQQs.values()), lr=5E-1)
     # ozr = torch.optim.Adam( logQ_params, lr=1E-2)
     # torch.autograd.set_detect_anomaly(True)
     
     for it in range(N_ITERS):
+        if verbose: print(it)
         logQ_normalized = [logQ-torch.logsumexp(logQ,0) for logQ in logQ_params]
 
         # distdata = torch.zeros(tuple(len(X)+1 for X in mu.varlist))
