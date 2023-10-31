@@ -161,7 +161,8 @@ def binvar(name : str) -> Variable:
     nl = name.lower()
     return Variable([nl, "~"+nl], default_value=nl, name=name)
 
-def binvars(names : str | Collection[str]):
+# def binvars(names : str | Collection[str]):
+def binvars(names):
     if isinstance(names,str):
         names = names.split(",")
     return [binvar(n) for n in names]
