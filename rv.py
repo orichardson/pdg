@@ -1,5 +1,6 @@
 import itertools
 import abc
+from collections.abc import Collection
 
 from . import utils
 
@@ -108,6 +109,8 @@ class Variable(set, metaclass=utils.CopiedType):
             named = hasattr(self,"name")
             nameeq = named == hasattr(other,"name")
             return set.__eq__(self,other) and nameeq and (self.name == other.name if named else True)
+        
+        
 
         # return isinstance(other, Variable) and set.__eq__(self, other) and (
         #         self.name == other.name if hasattr(self,"name") else True)
@@ -157,6 +160,12 @@ class Variable(set, metaclass=utils.CopiedType):
 def binvar(name : str) -> Variable:
     nl = name.lower()
     return Variable([nl, "~"+nl], default_value=nl, name=name)
+
+def binvars(names : str | Collection[str]):
+    if isinstance(names,str):
+        names = names.split(",")
+    return [binvar(n) for n in names]
+
 
 Unit = Variable('⋆', default_value='⋆', name='1')
 

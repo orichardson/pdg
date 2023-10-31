@@ -21,7 +21,7 @@ from ..dist import CPT, RawJointDist as RJD
 
 _loc = locals()
 
-def _ns_save(v : Var):
+def _ns_save(v : Var): # save variable to pdg.lib namespace
     _loc[v.name] = v
 
 for (N,p) in zip('ABCDE', primes()) :
