@@ -1017,7 +1017,7 @@ class PDG:
 		return (dist, iters) if store_iters else dist
 
 	def iter_GS_ordered(self, edge_order=None, 
-			max_iters: Number = 200,  tol=1E-30, 
+			max_iters: Number = 200,  tol=1E-20, 
 			counterfactual_recalibration=False,
 			init = None,
 			store_iters=False, 
@@ -1072,8 +1072,11 @@ class PDG:
 
 	def GS_step(self, dist : RJD, XYP) -> RJD:
 		"""
-		perform a Gibbs Sampling procedure with a variable on the distribution `dist`
-		according to the edge XYP = (X: Var, Y: Var, cpd:CPD[Y|X] )
+		Computes the transformation
+			(Q(X,Y,Z), P(Y|X)) ↦ Q(XZ) P(Y|X)
+
+		In other words, it performs a Gibbs Sampling procedure with a variable on the distribution `dist`
+		according to the edge XYP = (X: Var, Y: Var, cpd:CPD[Y|X] ).
 		"""
 		X,Y,cpd = XYP
 		not_target = list(v for v in self.rawvarlist if
@@ -1082,6 +1085,11 @@ class PDG:
 		return dist.prob_matrix(*not_target,X) * dist.broadcast(cpd)
 
 	def careful_cpd_transform(self, dist : RJD, XYP) -> RJD:
+		""" 
+		Computes the transformation
+		( Q(XYZ), P(Y|X)) ↦ Q(X) P(Y|X) Q(Z|XY)
+		Sometimes referred to elsewhere in code as 'counterfactual recalibration'. 
+		"""
 		X,Y,cpd = XYP
 		# P(Y|X) * 
 		return dist.broadcast(cpd) * dist.data * dist.prob_matrix(X) / dist.prob_matrix(X,Y)
