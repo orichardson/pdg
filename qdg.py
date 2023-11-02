@@ -176,12 +176,12 @@ def find_witness( mu : RJD, Ar: DHyperGraph, N_ITERS=500, verbose=False):
 
 
     if verbose: print("SETUP COMPLETE")
-    ozr = torch.optim.Adam( logQ_params + list(logQQs.values()), lr=5E-1)
+    ozr = torch.optim.Adam( logQ_params + list(logQQs.values()), lr=9E-1)
     # ozr = torch.optim.Adam( logQ_params, lr=1E-2)
     # torch.autograd.set_detect_anomaly(True)
     
     for it in range(N_ITERS):
-        if verbose: print(it)
+        # if verbose: print(it)
         logQ_normalized = [logQ-torch.logsumexp(logQ,0) for logQ in logQ_params]
 
         # distdata = torch.zeros(tuple(len(X)+1 for X in mu.varlist))
@@ -203,6 +203,7 @@ def find_witness( mu : RJD, Ar: DHyperGraph, N_ITERS=500, verbose=False):
         # loss = torch.sum((distdata - mutorch.data)**2) + (1-distdata.sum())**2
         # loss = mu.torchify() // RJD(distdata, mu.varlist, use_torch=True) 
         loss = (mutorch.data * (torch.log(mutorch.data) - torch.log(distdata))).sum()
+        loss += 1 - distdata.sum() # the other part of KL ???    
             # + \
             # (1-distdata.sum()) * torch.log()
         loss.backward()

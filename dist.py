@@ -47,7 +47,8 @@ def zz1_div(top, bot):
 	return rslt
 
 def D_KL(d1,d2):
-	return z_mult(d1, np.ma.log(zz1_div(d1,d2))).sum()
+	# return z_mult(d1, np.ma.log(zz1_div(d1,d2))).sum()
+	return z_mult(d1, np.ma.log(zz1_div(d1,d2))).sum() + d2.sum() - d1.sum()
 
 try:
 	import torch
@@ -55,7 +56,10 @@ try:
 	def D_KL_torch(t1, t2, LOGZERO=1E12):
 		where = torch.where
 		return where( t1 == 0., 0., 
-			t1*(torch.log( where(t1==0., LOGZERO, t1) - torch.log(where(t2==0, LOGZERO, t2))))).sum()
+			t1*(torch.log( where(t1==0., LOGZERO, t1) - torch.log(where(t2==0, LOGZERO, t2))))
+			# ).sum()
+			).sum() + t2.sum() - t1.sum()
+	
 except ImportError:
 	print("No torch; only numpy backend")
 
