@@ -175,6 +175,9 @@ def _process_vars(varlist, vars, given=None):
 		or isinstance(vars, rv.ConditionRequest) or vars is ...:
 			vars = [vars]
 	
+	if hasattr(vars, '__getitem__') and hasattr(vars, '__len__') and len(vars) == 1 and isinstance(vars[0],str):
+		vars = vars[0]
+
 	if isinstance(vars, str):
 		if '|' in vars:
 			t, g = vars.split("|")
@@ -570,6 +573,7 @@ class RawJointDist(Dist):
 
 	def conditional_marginal(self, vars, query_mode=None):
 		if query_mode is None: query_mode = self._query_mode
+		else: assert(query_mode =='ndarray' or query_mode == 'dataframe')
 		# if coordinate_mode is "joint": query_mode = "ndarray"
 
 		# print(type(vars), vars, isinstance(vars, rv.Variable))
@@ -640,7 +644,7 @@ class RawJointDist(Dist):
 		return self.conditional_marginal(vars, self._query_mode)
 
 
-	def prob_matrix(self, *vars, given=None):
+	def prob_matrix(self, vars, given=None):
 		""" A global, less user-friendly version of
 		conditional_marginal(), which keeps indices for broadcasting.
 		TODO: Does not handle duplicate dimensions yet! """
@@ -679,7 +683,7 @@ class RawJointDist(Dist):
 		""" Computes the entropy, or conditional
 		entropy of the list of variables, given all those
 		that occur after a ConditionRequest. """
-		P = self.prob_matrix(*vars, given=given)
+		P = self.prob_matrix(vars, given=given)
 		d = self.data
 		if self._torch:
 			return - (torch.log( torch.where(P==0, 1., P)) * d).sum() / np.log(base)
@@ -957,13 +961,13 @@ class CliqueForest(Dist):
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		return broadcast(cpt, self.varlist, vfrom, vto)
 
-	def prob_matrix(self, *vars, given=None):
+	def prob_matrix(self, vars, given=None):
 		""" A global, less user-friendly version of
 		conditional_marginal(), which keeps indices for broadcasting.
 		Does not handle duplicate dimensions. """
 		for rjd in self.dists:
 			try: 
-				localpm = rjd.prob_matrix(*vars, given=given)
+				localpm = rjd.prob_matrix(vars, given=given)
 				# print(localpm.shape)
 
 				# extend with ones for all missing dimensions;
@@ -992,7 +996,7 @@ class CliqueForest(Dist):
 		warnings.warn("Falling back on untested junction tree pgmpy query")
 		tarvars, cndvars =_process_vars(self.varlist, vars, given=given)
 		ans = self._fallback_joint_query_bp(tarvars + cndvars)
-		return ans.prob_matrix(*vars,given=given)
+		return ans.prob_matrix(vars,given=given)
 
 
 		# raise NotImplementedError("not all variables are in the same cluster;"+

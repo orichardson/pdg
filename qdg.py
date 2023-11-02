@@ -70,7 +70,9 @@ class DHyperGraph(object):
 
         # for n in G.nod
         # TODO: add implied arcs from supersets to subsets, and return.
-        
+    
+    def SDef(self, mu):
+        return - mu.H(...) + sum(mu.H(*a.tgts,'|', *a.srcs) for a in self)
 
 
 # QDG = weighted hypergraph
