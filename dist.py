@@ -10,13 +10,15 @@ import collections
 
 from functools import reduce
 from operator import and_, mul
+import itertools as itt
+from types import SimpleNamespace
+
 
 from . import utils
 from . import rv
 Var = rv.Variable
 
 import warnings
-import itertools
 import re
 	
 from .alg.bp import avg_init_pgmpy_BP_calibrate
@@ -31,7 +33,7 @@ except ImportError:
 def powerset(iterable, reverse=False):
 	"powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
 	s = list(iterable)
-	return itertools.chain.from_iterable(itertools.combinations(s, r) 
+	return itt.chain.from_iterable(itt.combinations(s, r) 
 		for r in ( reversed(range(len(s)+1)) if reverse else range(len(s)+1))
 	)
 
@@ -457,7 +459,6 @@ class RawJointDist(Dist):
 	
 	def to_dit(self):
 		from dit import Distribution
-		import itertools as itt
 
 		data = self.data.detach().numpy() if self._torch else self.data
 
@@ -677,6 +678,49 @@ class RawJointDist(Dist):
 		return collapsed
 	
 
+	# the next two methods are the previous one broken into two pieces,
+	# so that the indexing doesn't have to be done in every iteration.
+	#
+	def make_preprocess_varlookup(self, *vars, given=None):
+		tarvars, cndvars = self._process_vars(vars, given=given)
+		# print([t.name for t in tarvars], "|", [c.name for c in cndvars])
+		idxt = self._idxs(*tarvars)
+		idxc = self._idxs(*cndvars)
+		# print("idxt: ", idxt, " \tidxc", idxc)
+		IDX = idxt + idxc
+
+		N = len(self.varlist)
+		dim_nocond = tuple(i for i in range(N) if i not in idxc )
+		dim_neither = tuple(i for i in range(N) if i not in IDX ) 
+		return SimpleNamespace(
+			idxt = idxt,
+			idxc = idxc,
+			dim_nocond = dim_nocond,
+			dim_neither = dim_neither,
+			IDX = IDX
+		)
+
+	def direct_prob_matrix_from_idx(self, preprocess_varlookup):
+		pl = preprocess_varlookup
+		if self._torch: # wow, torch's nonparamatricity of sum for dim=[] is crazy
+			collapsed = self.data.sum(dim=pl.dim_neither,keepdim=True) if  len(pl.dim_neither) \
+				else self.data
+
+			if len(pl.cndvars) > 0: # nans are correct, but destroy the gradient. So we set them equal to zero.
+				denom = collapsed.sum(dim=pl.dim_nocond, keepdim=True)
+				return torch.divide(collapsed, torch.where(denom==0, 1., denom))
+
+			return collapsed
+
+		else: # for numpy arrays
+			collapsed = self.data.sum(axis=pl.dim_neither, keepdims=True)
+
+			return np.ma.divide(collapsed, collapsed.sum(axis=pl.dim_nocond, keepdims=True)) \
+					if len(pl.cndvars) > 0 else collapsed
+
+
+	
+
 	####################### INFORMATION QUERIES #####################
 
 	def H(self, *vars, base=2, given=None):
@@ -718,11 +762,22 @@ class RawJointDist(Dist):
 			11000 is the conditional mutual information I(X1; X2 | ...)
 
 		"""
-		for S in powerset(self.varlist):
-			pass
+		# slow way: use I function and do not cache intermediate results.
+		profile = np.zeros((2,)*len(self.varlist))
+		# for S in powerset(self.varlist):
+		for indicator in itt.product(*[[0,1]]*len(self.varlist)):
+			split = {1: [],  0: []}
+			for i,X in enumerate(self.varlist):
+				split[indicator[i]].append(X)
+
+			# print(indicator, split)
+			# print(profile, profile[indicator])
+			profile[indicator] = self.I(*split[True], given=split[False])
+		
+		return profile
 
 
-	def info_diagram(self, X, Y, Z=None):
+	def info_diagram(self, X, Y, Z=None, **kwargs):
 		# import matplotlib.pyplot as plt
 		from matplotlib_venn import venn3
 
@@ -733,7 +788,7 @@ class RawJointDist(Dist):
 		infos = [round(i, 3) for i in infos]
 		# infos = [int(round(i * 100)) for i in infos]
 		# Make the diagram
-		v = venn3(subsets = infos, set_labels=[X.name,Y.name,Z.name])
+		v = venn3(subsets = infos, set_labels=[X.name,Y.name,Z.name], **kwargs)
 		return v
 
 	#################### CONSTRUCTION ######################
