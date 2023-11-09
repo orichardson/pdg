@@ -14,7 +14,7 @@ import itertools as itt
 from types import SimpleNamespace
 
 
-from . import utils
+from . import util
 from . import rv
 Var = rv.Variable
 
@@ -231,7 +231,7 @@ class Dist(CDist): pass
 SubCPT = TypeVar('SubCPT' , bound='CPT')
 
 
-class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
+class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
 	PARAMS = {"nfrom", "nto"}
 	_internal_names = pd.DataFrame._internal_names + ["nfrom", "nto"]
 	_internal_names_set = set(_internal_names)
@@ -248,7 +248,7 @@ class CPT(CDist, pd.DataFrame, metaclass=utils.CopiedABC):
 	#     pass
 
 	def flattened_idx(self):
-		cols = self.columns.to_flat_index().map(lambda s: s[0])
+		cols = self.columns.to_flat_index().map(lambda s: s[0])	
 		rows = self.index.to_flat_index().map(lambda s: s[0])
 
 		return pd.DataFrame(self.to_numpy(), columns = cols, index=rows)
@@ -500,7 +500,7 @@ class RawJointDist(Dist):
 		if self._torch and other._torch:
 			return D_KL_torch(self.data, other.data)
 		
-		narr = utils.nparray_of
+		narr = util.nparray_of
 		return D_KL(narr(self.data), narr(other.data))
 
 	def __len__(self):

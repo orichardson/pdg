@@ -98,7 +98,11 @@ class FactorGraph:
         # raise NotImplemented
         return mn
             
-        
+
+    @staticmethod
+    def fit():
+        pass
+        # TODO: point to qdg.factor_as
         
         
         

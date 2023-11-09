@@ -4,7 +4,7 @@ from collections import defaultdict
 # from collections import frozenset as fz
 
 from .dist import RawJointDist as RJD
-from .utils import nparray_of
+from .util import nparray_of
 
 from itertools import chain
 from inspect import getsource
@@ -384,7 +384,8 @@ class LView:
         return nextview
         
         
-    def pca_view(self, ax=None, arrows=True, transform=None):    
+    def pca_view(self, ax=None, arrows=True, transform=None):
+        """ TODO: only partially refactored! must recompute nametrace. """
         import numpy as np
         from sklearn.decomposition import PCA
         from matplotlib import pyplot as plt

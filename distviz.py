@@ -10,7 +10,7 @@ from matplotlib.cm import get_cmap
 
 cmaps = [get_cmap(cmn) for cmn in ["Blues", "Reds", "Greens", "Greys", "Oranges", "Purples"]]
 
-from .utils import nparray_of
+from .util import nparray_of
 
 def pca_view(*unnamedtraces,
         ax=None, arrows=True, transform=None,
@@ -37,6 +37,8 @@ def pca_view(*unnamedtraces,
         ddata = nparray_of(t).reshape(len(t),-1)
         X,Y = transform(ddata)[:,:].T
         U,V = np.diff(X), np.diff(Y) 
+
+        
         # norm = np.sqrt(U**2 + V**2)
     #     norm = np.where(norm==0, 1, norm)
     

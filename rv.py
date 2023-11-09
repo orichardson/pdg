@@ -2,14 +2,14 @@ import itertools
 import abc
 from collections.abc import Collection
 
-from . import utils
+from . import util
 
 class RV(abc.ABC):
     pass
     # @abc.abstractproperty
     # def vals(self):
 
-class ConditionRequest(object, metaclass=utils.CopiedType):
+class ConditionRequest(object, metaclass=util.CopiedType):
     PARAMS = {"target", "given"}
 
     @property
@@ -17,7 +17,7 @@ class ConditionRequest(object, metaclass=utils.CopiedType):
         return self.target.name + " | "+ self.given.name
 
 
-class Variable(set, metaclass=utils.CopiedType):
+class Variable(set, metaclass=util.CopiedType):
     PARAMS = {'name', 'default_value'}
 
     def __init__(self, vals):

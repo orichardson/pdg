@@ -13,7 +13,7 @@ import collections
 from numbers import Number
 
 # import utils
-from .utils import dictwo
+from .util import dictwo
 from .rv import Variable, ConditionRequest, Unit
 from .fg import FactorGraph
 from .dist import RawJointDist as RJD, CPT, CliqueForest#, Dist, CDist,
@@ -662,7 +662,7 @@ class PDG:
 
 			for i, (X,Y,cpd_df) in enumerate(self.edges("XYP")):
 				# muy_x, muxy, mux = Pr(Y | X), Pr(X, Y), Pr(X)
-				muxy = Pr(X, Y)
+				muxy = Pr([X, Y])
 				muy_x = Pr(Y | X)
 				# eq = (np.closecpt - muy_x
 				if debug:
@@ -766,7 +766,7 @@ class PDG:
 			# This could easily be done 3x more efficiently
 			# look here if optimization reqired.
 			Pr = mu.prob_matrix
-			muy_x, muxy, mux = Pr(Y | X), Pr(X, Y), Pr(X)
+			muy_x, muxy, mux = Pr(Y | X), Pr([X, Y]), Pr(X)
 			cpt = mu.broadcast(cpd_df)
 			claims = np.isfinite(cpt)
 			logcpt = - np.ma.log(cpt)
@@ -1082,7 +1082,7 @@ class PDG:
 		not_target = list(v for v in self.rawvarlist if
 			len(set(v.name.split('×')) & set(Y.name.split("×"))) == 0)
 				# Get the cpd from all variables that do not share a name with target.
-		return dist.prob_matrix(*not_target,X) * dist.broadcast(cpd)
+		return dist.prob_matrix([*not_target,X]) * dist.broadcast(cpd)
 
 	def careful_cpd_transform(self, dist : RJD, XYP) -> RJD:
 		""" 
@@ -1092,7 +1092,9 @@ class PDG:
 		"""
 		X,Y,cpd = XYP
 		# P(Y|X) * 
-		return dist.broadcast(cpd) * dist.data * dist.prob_matrix(X) / dist.prob_matrix(X,Y)
+		return dist.broadcast(cpd) * dist.data * dist.prob_matrix(X) / dist.prob_matrix([X,Y])
+	
+	# def 
 		
 	def mk_edge_transformer(self, spec, reweight=True):
 		X,Y,cpd = self._fmted(self._get_edgekey(spec), ['X','Y','P'])
