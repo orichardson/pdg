@@ -5,8 +5,10 @@ Probabilistic Dependency Graphs (PDGs) are a powerful class of graphical model, 
 
 For more information on what these things are and why they're useful, check out the following papers. 
 
-*  Probabilistic Dependency Graphs (AAAI 221) [<code>[<b>arXiv</b>]</code>](https://arxiv.org/abs/2012.10800)
+*  Probabilistic Dependency Graphs (AAAI 21) [<code>[<b>arXiv</b>]</code>](https://arxiv.org/abs/2012.10800)
 *  Loss as PDG Inconsistency: choose your model, not your loss (AISTATS 22) [<code>[<b>arXiv</b>]</code>](https://arxiv.org/abs/2202.11862)
+
+* Inference for Probabilistic Dependency Graphs (UAI 23) [<code>[<b>arXiv</b>]</code>](https://arxiv.org/abs/2311.05580)
 
 # 
 

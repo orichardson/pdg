@@ -24,7 +24,7 @@ def nparray_of( maybe_tensor ):
     except ImportError: pass
         
     try:
-        from .dist import RawJointDist as RJD
+        from ..dist import RawJointDist as RJD
         if isinstance(maybe_tensor, RJD):
             return maybe_tensor.data
         elif isinstance(maybe_tensor, list) and len(maybe_tensor) and isinstance(maybe_tensor[0], RJD):

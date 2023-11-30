@@ -445,8 +445,8 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 	def g(x : RJD) : # concave part (actual val just for printing really)
 		val = 0
 		for L,X,Y,sL in cave_edges:
-			muxy = x.prob_matrix(X,Y)
-			mux = x.prob_matrix(X)
+			muxy = x.prob_matrix([X,Y])
+			mux = x.prob_matrix([X])
 			vmat = sL * z_mult( muxy , np.ma.log( np.ma.divide(muxy, mux) ))
 			val += vmat.sum()
 		return val 
@@ -455,8 +455,8 @@ def cccp_opt_joint(M, gamma=1, max_iters=20, **solver_kwargs):
 		val = np.zeros(x.data.shape)
 
 		for L,X,Y,sL in cave_edges:
-			muxy = x.prob_matrix(X,Y)
-			mux = x.prob_matrix(X)
+			muxy = x.prob_matrix([X,Y])
+			mux = x.prob_matrix([X])
 			# vmat = sL * z_mult( muxy , np.ma.log( np.ma.divide(muxy, mux) ))
 			vmat = sL *  np.ma.log( np.ma.divide(muxy, mux))
 			val += vmat - z_mult(muxy, vmat).sum()

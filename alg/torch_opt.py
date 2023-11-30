@@ -30,7 +30,7 @@ def torch_score_alt(pdg, μ : RJD, γ):
 	for X,Y,cpd_df,α,β in pdg.edges("XYPαβ"):
 		# print("For edge %s -> %s (α=%.2f, β=%.2f)"%(X.name,Y.name,α,β))
 		# muy_x, muxy, mux = Pr(Y | X), Pr(X, Y), Pr(X)
-		muxy = μ.prob_matrix(X, Y)
+		muxy = μ.prob_matrix([X, Y])
 		muy_x = μ.prob_matrix(Y | X)
 
 		logcond_info = - torch.log(twhere(muxy==0, 1., muy_x))
@@ -69,7 +69,7 @@ def torch_score(pdg, μ : Union[RJD,CliqueForest], γ):
 	for X,Y,cpd_df,α,β in pdg.edges("XYPαβ"):
 		# print("For edge %s -> %s (α=%.2f, β=%.2f)"%(X.name,Y.name,α,β))
 		# muy_x, muxy, mux = Pr(Y | X), Pr(X, Y), Pr(X)
-		muxy = μ.prob_matrix(X, Y)
+		muxy = μ.prob_matrix([X, Y])
 		muy_x = μ.prob_matrix(Y | X)
 
 		logcond_info = - torch.log(twhere(muxy==0, 1., muy_x))
