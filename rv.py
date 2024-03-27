@@ -3,6 +3,72 @@ import abc
 from collections.abc import Collection
 
 from . import util
+# from . import evt
+
+from scipy.sparse import coo_array
+import numpy as np
+
+def _merge(varlist1, varlist2, mat1, mat2):
+    varlist_new = varlist1.copy()
+    # shape2_new = (1,)*len(varlist_new)
+    shape2_new = [1,]*len(varlist_new)
+    # axismap = {}
+    axislist = []
+    for i,v in enumerate(varlist2):
+        if v  in varlist1:
+            j = varlist_new.index(v)
+            shape2_new[j] = mat2.shape[i] #len(v)
+            axislist.append(j)
+        else:
+            axislist.append(len(varlist_new))
+            varlist_new.append(v)
+            shape2_new += (mat2.shape[i],)
+    
+    S = sorted(axislist)
+    permutation = [S.index(i) for i in axislist]
+    shape1_new = mat1.shape + (1,)*(len(varlist_new)-len(varlist1))
+    print(shape1_new)
+    print(shape2_new)
+    return varlist_new, mat1.reshape(shape1_new), mat2.transpose(permutation).reshape(shape2_new)
+
+class Event(object):
+    def __init__(self, varlist, indmat, dispstr=None):
+        """ construct an event from a variable list and an indicator matrix """
+        self.varlist = varlist
+        self.indmat = indmat
+        self.dispstr = dispstr
+
+    def __and__(self, other): 
+        vl, mat1, mat2 = _merge(self.varlist,other.varlist, self.indmat, other.indmat)
+        new_dispstr = ("("+self.dispstr+" ∧ "+other.dispstr+")" 
+                       if (self.dispstr and other.dispstr) else None)
+        return Event(vl, mat1 & mat2, dispstr=new_dispstr)
+    
+    def __or__(self, other):
+        vl, mat1, mat2 = _merge(self.varlist,other.varlist, self.indmat, other.indmat)
+        new_dispstr = ("("+self.dispstr+" ∨ "+other.dispstr+")" 
+                       if (self.dispstr and other.dispstr) else None)
+        return Event(vl, mat1 | mat2, dispstr=new_dispstr)
+    
+    def __xor__(self, other):
+        vl, mat1, mat2 = _merge(self.varlist,other.varlist, self.indmat, other.indmat)
+        new_dispstr = ("("+self.dispstr+" ⨁ "+other.dispstr+")" 
+                       if (self.dispstr and other.dispstr) else None)
+        return Event(vl, mat1 ^ mat2, dispstr=new_dispstr)
+
+    def __repr__(self):
+        if self.dispstr:
+            return self.dispstr
+        return object.__repr__(self)
+    
+
+    def truth(self, *varvals):
+        return self.truth()
+    
+    # @property
+    # def indmat(self):
+    #     return self.indmat
+        
 
 class RV(abc.ABC):
     pass
@@ -111,6 +177,20 @@ class Variable(set, metaclass=util.CopiedType):
             return set.__eq__(self,other) and nameeq and (self.name == other.name if named else True)
         
         
+        elif other in self: # here, we want to make an event
+            ar = np.zeros(len(self),dtype=bool)
+            ar[self._ordered_set.index(other)] = 1
+            return Event([self], ar, dispstr=self.name+"="+str(other))
+        
+        return False
+    
+    def __ne__(self, other):
+        if other in self:
+            ar = np.ones(len(self),dtype=bool)
+            ar[self._ordered_set.index(other)] = 0
+            return Event([self], ar, dispstr=self.name+"!="+str(other))
+
+        return not (self.__eq__(other))
 
         # return isinstance(other, Variable) and set.__eq__(self, other) and (
         #         self.name == other.name if hasattr(self,"name") else True)
@@ -141,8 +221,9 @@ class Variable(set, metaclass=util.CopiedType):
 
     @property
     def ordered(self):
-        self._ordered_set = [x for x in self._ordered_set if x in self] + \
-            [y for y in self if y not in self._ordered_set]
+        # Now assuming that this is taken care of automatically...
+        # self._ordered_set = [x for x in self._ordered_set if x in self] + \
+        #     [y for y in self if y not in self._ordered_set]
         return self._ordered_set
 
     # @property
@@ -150,24 +231,25 @@ class Variable(set, metaclass=util.CopiedType):
     #     pass
 
     @classmethod
+    def binvar(cls, name : str) -> 'Variable':
+        nl = name.lower()
+        return cls([nl, "~"+nl], default_value=nl, name=name)
+
+    @classmethod
+    def binvars(cls, names):
+        if isinstance(names,str) and ',' in names:
+            names = names.split(",")
+        return [cls.binvar(n) for n in names]
+
+    @classmethod
     def alph(cls, name : str, n : int):
         nl = name.lower()
         return cls([nl+str(i) for i in range(n)], default_value=nl+"0", name=name)
-# V = Variable([3, 10, 2], name='V')
-# (V*V).name
-# α = β / γ
-
-def binvar(name : str) -> Variable:
-    nl = name.lower()
-    return Variable([nl, "~"+nl], default_value=nl, name=name)
-
-# def binvars(names : str | Collection[str]):
-def binvars(names):
-    if isinstance(names,str):
-        names = names.split(",")
-    return [binvar(n) for n in names]
 
 
+binvar = Variable.binvar
+binvars = Variable.binvars
+alph = Variable.alph
 Unit = Variable('⋆', default_value='⋆', name='1')
 
 

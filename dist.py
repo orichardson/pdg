@@ -93,7 +93,7 @@ def _idxs(varlist, *varis, multi=False):
 
 	return idxs
 
-def broadcast(cpt, varlist, 
+def broadcast(mat_like, varlist, 
 		vfrom: Var = None,
 		vto: Var =None ) -> np.array:
 	""" returns its argument, but shaped
@@ -103,11 +103,12 @@ def broadcast(cpt, varlist,
 
 	Parameters
 	----
-	> cpt: the argument to be broadcast; might be a dataframe, a CPT, or a np.matrix
+	> mat_like: the argument to be broadcast; might be a dataframe, a CPT, or a np.matrix
 	> vfrom,vto: the attached variables (supply only if cpt does not have this data)
 	"""
-	if vfrom is None: vfrom = cpt.nfrom
-	if vto is None: vto = cpt.nto
+	if isinstance(mat_like, CPT):
+		if vfrom is None: vfrom = mat_like.nfrom
+		if vto is None: vto = mat_like.nto
 
 	IDX = _idxs(varlist, vfrom,vto,multi=True)
 	UIDX = np.unique(IDX).tolist() # sorted also
@@ -117,55 +118,33 @@ def broadcast(cpt, varlist,
 	for j,i in enumerate(IDX):
 		init_shape[j] = len(varlist[i])
 
-	cpt_mat = cpt.to_numpy() if isinstance(cpt, pd.DataFrame) else cpt
+	mat = mat_like
+	if isinstance(mat_like, pd.DataFrame):
+		mat = mat_like.to_numpy()
+	elif isinstance(mat_like, rv.Event):
+		mat = mat_like.indmat
 
-	# if idxt < idxf:
-	#     cpt_mat = cpt_mat.T
-
-	cpt_mat = cpt_mat.reshape(*init_shape)
-	cpt_mat = np.einsum(cpt_mat, [*IDX,...], [*UIDX, ...])
-
-	# clones = [i != j for i,j in enumerate(types)]
+	mat = mat.reshape(*init_shape)
+	mat = np.einsum(mat, [*IDX,...], [*UIDX, ...])
 
 	clones = [varlist.index(v) != i for i,v in enumerate(varlist)]
 
-	cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
+	mat = np.moveaxis(mat, np.arange(len(UIDX)), UIDX)
 
-	# re-expanding in case varlist has duplicates. 
+	# expand with fancy einsum, in the case where varlist has duplicates. 
 	if any(clones):
-		# uvarlist = []
-		# for v in varlist:
-		# 	if v not in uvarlist: 
-		# 		uvarlist.append(v)
-		
-		# counting_types = [uvarlist.index(v) for v in varlist]
 		idx_types = [varlist.index(v) for v in varlist]
 
-		# print('idx_types', idx_types)
-		# print('counting_types', counting_types)
-
-		# print(tuple((len(V) if types[i] in IDX else 1) for i,V in enumerate(varlist)))
-		# print('outputshape', tuple((len(V) if varlist.index(V) in IDX else 1) for V in varlist))
-
 		output = np.zeros(tuple((len(V) if idx_types[i] in IDX else 1) for i,V in enumerate(varlist)))
-		# output = np.zeros( tuple((len(V) if varlist.index(V) in IDX else 1) for V in varlist))
-		# print('output shape', output.shape)
-		# print('cptmat.shape ', cpt_mat.shape)
-		# print('einsum target: ', np.einsum(output, idx_types, UIDX + list(set(idx_types) - set(UIDX)) ).shape)
-		# print('clones', clones)
-		# print('IDX: ', IDX)
-		# print("UIDX: ", UIDX)
-		# print('Candidate 1: ', tuple((len(v) if i in IDX else 1 ) for i,v in enumerate(varlist) if not clones[i]))
-		# print("Candidate 2: ", [ d for i,d in enumerate(cpt_mat.shape) if not clones[UIDX[i]]])
 
-		cpt_mat_tailored = cpt_mat.reshape( tuple((len(v) if i in IDX else 1 ) for i,v in enumerate(varlist) if not clones[i]))
-		# cpt_mat_tailored = cpt_mat.reshape([ d for d,c in zip(cpt_matbshape, clones) if not c])
-		np.einsum(output, idx_types, UIDX + list(set(idx_types) - set(UIDX)) )[:] = cpt_mat_tailored
+		cpt_mat_tailored = mat.reshape( 
+			tuple((len(v) if i in IDX else 1 )
+				for i,v in enumerate(varlist) if not clones[i]))
+		np.einsum(output, idx_types, 
+			UIDX + list(set(idx_types) - set(UIDX)) )[:] = cpt_mat_tailored
 	else: 
-		output = cpt_mat
+		output = mat
 
-	# cpt_mat = np.moveaxis(cpt_mat, np.arange(len(UIDX)), UIDX)
-	# return cpt_mat
 	return output
 
 
@@ -547,8 +526,8 @@ class RawJointDist(Dist):
 	def _idxs(self, *varis, multi=False):
 		return _idxs(self.varlist, *varis, multi=multi)
 
-	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
-		return broadcast(cpt, self.varlist, vfrom, vto)
+	def broadcast(self, mat_like, vfrom=None, vto=None) -> np.array:
+		return broadcast(mat_like, self.varlist, vfrom, vto)
 	
 
 	####################### OPERATIONS #######################
@@ -643,7 +622,12 @@ class RawJointDist(Dist):
 	# returns the marginal on a variable
 	def __getitem__(self, vars):
 		return self.conditional_marginal(vars, self._query_mode)
-
+	
+	def __call__(self, argument):
+		if isinstance(argument, rv.Event):
+			evt_mat = self.broadcast(mat_like=argument, 
+							vfrom=rv.Unit, vto=Var.product(argument.varlist))
+			return (self.data * evt_mat).sum()
 
 	def prob_matrix(self, vars, given=None):
 		""" A global, less user-friendly version of
