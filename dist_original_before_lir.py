@@ -148,81 +148,6 @@ def broadcast(mat_like, varlist,
 	return output
 
 
-def broadcast_torch(tensor_like,
-                    varlist, df=None,
-                    vfrom=None,
-                    vto=None):
-    """
-    Broadcast a factor/tensor living on (vfrom,vto) into the global varlist order.
-
-    Returns a tensor with shape:
-      - size |var| on axes whose *first occurrence index* is in IDX
-      - size 1 on axes for variables not in the factor
-    If varlist has duplicates of the same Var, those axes are 'tied' via expand.
-    All operations preserve autograd.
-
-    Assumptions:
-      - len(var) -> cardinality (like your Vars)
-      - tensor_like is a torch.Tensor (keep its gradients).
-    """
-    if vfrom is None: vfrom = df.nfrom
-    if vto is None: vto = df.nto
-    x = tensor_like
-    # if not isinstance(x, torch.Tensor):
-    #     # You *can* wrap other types, but then there is no autograd to preserve.
-    #     x = torch.as_tensor(x)
-
-    IDX  = _idxs(varlist, vfrom, vto, multi=True)
-    UIDX = sorted(set(IDX))
-
-    # -------- 1) initial reshape to include one axis per appearance in IDX
-    # Number of axes after this step = len(varlist) + len(IDX) - len(UIDX)
-    n_extra = len(varlist) - len(UIDX)
-    init_shape = [1] * (len(IDX) + n_extra)
-    for j, i in enumerate(IDX):
-        init_shape[j] = len(varlist[i])
-    x = x.reshape(*init_shape)  # view -> keeps grads
-
-    # -------- 2) merge duplicate appearances of the same variable via einsum "diagonal"
-    # Build dynamic einsum subscripts
-    letters = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-    if len(IDX) + n_extra > len(letters):
-        raise RuntimeError("Too many axes for simple einsum labeling.")
-
-    # assign a label per *variable index* (shared across its duplicate appearances)
-    label_for_var = {}
-    next_label = 0
-    in_labels = []
-    for i in IDX:
-        if i not in label_for_var:
-            label_for_var[i] = letters[next_label]; next_label += 1
-        in_labels.append(label_for_var[i])
-
-    # labels for the trailing 1-sized "other" dims we carried along
-    extra_labels = [letters[next_label + k] for k in range(n_extra)]
-    in_sub  = "".join(in_labels + extra_labels)
-    out_sub = "".join([label_for_var[i] for i in UIDX] + extra_labels)
-
-    x = torch.einsum(f"{in_sub}->{out_sub}", x)  # differentiable
-
-    # -------- 3) put the factor axes where they belong in varlist
-    # (first len(UIDX) axes -> positions UIDX)
-    x = x.movedim(list(range(len(UIDX))), UIDX)
-
-    # -------- 4) expand to handle duplicate variables ("clones") in varlist
-    # For any axis whose *first occurrence* index is in IDX, size becomes |var|; else 1.
-    first_idx = [varlist.index(v) for v in varlist]
-    target_shape = [
-        (len(V) if first_idx[i] in IDX else 1)
-        for i, V in enumerate(varlist)
-    ]
-    x = x.expand(*target_shape)  # view-only expansion, keeps grads
-
-    return x
-
-
-
-
 def _process_vars(varlist, vars, given=None):
 	if vars is ...:
 		vars = varlist
@@ -603,9 +528,7 @@ class RawJointDist(Dist):
 
 	def broadcast(self, mat_like, vfrom=None, vto=None) -> np.array:
 		return broadcast(mat_like, self.varlist, vfrom, vto)
-
-	def broadcast_torch(self, mat_like, df=None, vfrom=None, vto=None) :
-		return broadcast_torch(mat_like, self.varlist, df, vfrom, vto)
+	
 
 	####################### OPERATIONS #######################
 
