@@ -29,8 +29,11 @@ def _cpd_to_tensor_for_edge(mu, cpd_obj, X, Y):
 		# print(cpd_obj.cpd)
 		# print("df shape" , cpt_shape)
 
+		# TODO: probs() is under development we will switch to this in the 
+		# near future. 
 		# cpt = cpd_obj.probs()     # (|X|, |Y|)
 		cpt = cpd_obj.logits
+		
 		# print("cpt_shape", cpt.shape)
 		# cpt_np = mu.broadcast_torch(cpt, df = cpd_obj.cpd) 
 		   
