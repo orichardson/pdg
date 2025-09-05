@@ -24,16 +24,17 @@ Optims = {'adam' : torch.optim.Adam, 'sgd' : torch.optim.SGD,
 from .lir__simpler import ParamCPD
 def _cpd_to_tensor_for_edge(mu, cpd_obj, X, Y):
 	if isinstance(cpd_obj, ParamCPD):
+		### U: Debugging
 		# cpt_sh = torch.tensor(mu.broadcast(cpd_obj.cpd), requires_grad=False)
 		# cpt_shape = cpt_sh.shape
 		# print(cpd_obj.cpd)
 		# print("df shape" , cpt_shape)
 
-		# TODO: probs() is under development we will switch to this in the 
-		# near future. 
-		# cpt = cpd_obj.probs()     # (|X|, |Y|)
-		cpt = cpd_obj.logits
+
+		cpt = cpd_obj.probs()    ###  working great!
+		# cpt = cpd_obj.logits  #that is a problem don't use it, use probs
 		
+		### U: Debugging
 		# print("cpt_shape", cpt.shape)
 		# cpt_np = mu.broadcast_torch(cpt, df = cpd_obj.cpd) 
 		   

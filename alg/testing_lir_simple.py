@@ -107,6 +107,48 @@ def make_every_cpd_parametric(pdg, init: str = "from_cpd"):
 
     return pdg
 
+
+def make_every_cpd_parametric_projections_fixed(pdg, init: str = "from_cpd"):
+    """
+    Replace each edge's CPD with a learnable ParamCPD.
+    updates the existing (X, Y, L) key, not a new key .
+    """
+    edges_snapshot = list(pdg.edges("l,X,Y,α,β,P"))  # freeze view before edits ( to avoid changing the list we're iterating through)
+
+    for L, X, Y, α, β, P in edges_snapshot:
+        if L[0] == "π":
+            learnable = ParamCPD(
+                X_card=len(X),
+                Y_card=len(Y),
+                name=str(L),
+                init="from_cpd",
+                mask=_mask_from_cpd(P),
+                cpd = P
+            )
+        else:
+            learnable = ParamCPD(
+                X_card=len(X),
+                Y_card=len(Y),
+                name=str(L),
+                init=init,
+                mask=_mask_from_cpd(P),
+                cpd = P
+            )
+ 
+        key = (X.name, Y.name, L)
+
+        if key in pdg.edgedata: 
+
+            print("before", pdg.edgedata[key]['cpd'])
+
+            print(learnable.logits)
+            pdg.edgedata[key]['cpd'] = learnable
+            print("after", pdg.edgedata[key]['cpd'])
+            if L[0] == "π":
+                pdg.edgedata[key]['cpd'].logits.requires_grad_(False)  # π edges are not learnable
+
+    return pdg
+
 # -----------------------------
 # 
 # test
@@ -121,8 +163,8 @@ def test_lir_on_random_pdg(num_vars=4, num_edges=4, gamma=1.0, seed=0, init="fro
                               src_range=(1, 2),
                               tgt_range=(1, 1),
                               seed=seed)
-    pdg = make_every_cpd_parametric(pdg, init=init)
-
+    # pdg = make_every_cpd_parametric(pdg, init=init)
+    pdg = make_every_cpd_parametric_projections_fixed(pdg, init=init) #Testing with everything uniform except π edges (initialized from CPD)
     # Debug: print edge structure
     print("\nEdges (label -> X -> Y):")
     for L, X, Y, α, β, P in pdg.edges("l,X,Y,α,β,P"):
@@ -159,6 +201,6 @@ def test_lir_on_random_pdg(num_vars=4, num_edges=4, gamma=1.0, seed=0, init="fro
 
 if __name__ == "__main__":
 
-    _mu, _pdg = test_lir_on_random_pdg(init = "from_cpd")
+    _mu, _pdg = test_lir_on_random_pdg(init = "uniform", gamma=0.0)  # "from_cpd" or "uniform" or "random"
     print(_mu)
     print(_pdg)
