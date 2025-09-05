@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional, Tuple
 import torch
 from typing import List
-
+import numpy as np
 
 # from .param_cpd import ParamCPD
 
@@ -14,7 +14,7 @@ class ParamCPD:
                  Y_card: int,
                  name: str = "",
                  cpd = None,
-                 init: str | torch.Tensor = "uniform",
+                 init: str | torch.Tensor = "from_cpd",
                  mask: Optional[torch.Tensor] = None,
                  dtype=torch.double,
                  device=None):
@@ -25,9 +25,19 @@ class ParamCPD:
         self.device = device or torch.device("cpu")
         self.cpd = cpd
 
-        if init == "uniform":
+        if init == "from_cpd":
+            if cpd is None:
+                raise ValueError("cpd must be provided when init='from_cpd'")
+            if hasattr(cpd, "to_numpy"):
+                arr = cpd.to_numpy()
+            else:
+                raise ValueError("cpd must have a to_numpy method")
+
+            logits = torch.tensor(arr, dtype=dtype, device=self.device)
+
+
+        elif init == "uniform":
             logits = torch.ones(self.X_card, self.Y_card, dtype=dtype, device=self.device)
-            # logits = torch.zeros(self.X_card, self.Y_card, dtype=dtype, device=self.device)
         elif init == "random":
             logits = torch.randn(self.X_card, self.Y_card, dtype=dtype, device=self.device)
         elif isinstance(init, torch.Tensor):
@@ -38,21 +48,23 @@ class ParamCPD:
 
         self.logits = torch.nn.Parameter(logits, requires_grad=True)
 
-        if mask is None:
-            self._mask = None
-        else:
-            if mask.dtype != torch.bool:
-                mask = mask.bool()
-            assert mask.shape == (self.X_card, self.Y_card)
-            self._mask = mask.to(self.device)
+        ## U: the mask may be useful later
+        # if mask is None:
+        #     self._mask = None
+        # else:
+        #     if mask.dtype != torch.bool:
+        #         mask = mask.bool()
+        #     assert mask.shape == (self.X_card, self.Y_card)
+        #     self._mask = mask.to(self.device)
 
     def probs(self) -> torch.Tensor:
         return torch.softmax(self.logits, dim=-1)
 
-    def mask(self) -> torch.Tensor:
-        if self._mask is None:
-            return torch.ones((self.X_card, self.Y_card), dtype=torch.bool, device=self.device)
-        return self._mask
+    ## U: the mask may be useful later
+    # def mask(self) -> torch.Tensor:
+    #     if self._mask is None:
+    #         return torch.ones((self.X_card, self.Y_card), dtype=torch.bool, device=self.device)
+    #     return self._mask
 
     def to_numpy(self):
         with torch.no_grad():

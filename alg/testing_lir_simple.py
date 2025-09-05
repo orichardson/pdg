@@ -75,7 +75,7 @@ def _mask_from_cpd(P):
     except Exception:
         return None
 
-def make_every_cpd_parametric(pdg, init: str = "uniform"):
+def make_every_cpd_parametric(pdg, init: str = "from_cpd"):
     """
     Replace each edge's CPD with a learnable ParamCPD.
     updates the existing (X, Y, L) key, not a new key .
@@ -94,13 +94,16 @@ def make_every_cpd_parametric(pdg, init: str = "uniform"):
  
         key = (X.name, Y.name, L)
         # print("key", key)
-        if key in pdg.edgedata:
+        if key in pdg.edgedata: # jump over π edges
+
             # print("\n\n\n", pdg.edgedata[key].keys())
             print("before", pdg.edgedata[key]['cpd'])
 
             print(learnable.logits)
             pdg.edgedata[key]['cpd'] = learnable
             print("after", pdg.edgedata[key]['cpd'])
+            if L[0] == "π":
+                pdg.edgedata[key]['cpd'].logits.requires_grad_(False)  # π edges are not learnable
 
     return pdg
 
@@ -109,7 +112,7 @@ def make_every_cpd_parametric(pdg, init: str = "uniform"):
 # test
 # -----------------------------
 
-def test_lir_on_random_pdg(num_vars=4, num_edges=4, gamma=1.0, seed=0, init="uniform"):
+def test_lir_on_random_pdg(num_vars=4, num_edges=4, gamma=1.0, seed=0, init="from_cpd"):
     print("=== Testing simple LIR on a random PDG ===")
 
     pdg = generate_random_pdg(num_vars=num_vars,
@@ -156,6 +159,6 @@ def test_lir_on_random_pdg(num_vars=4, num_edges=4, gamma=1.0, seed=0, init="uni
 
 if __name__ == "__main__":
 
-    _mu, _pdg = test_lir_on_random_pdg(init = "random")
+    _mu, _pdg = test_lir_on_random_pdg(init = "from_cpd")
     print(_mu)
     print(_pdg)
