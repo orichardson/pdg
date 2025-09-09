@@ -202,6 +202,6 @@ def test_lir_on_random_pdg(num_vars=4, num_edges=4, gamma=1.0, seed=0, init="fro
 if __name__ == "__main__":
     
     #uniform <=> all edges initialized to ones except the projection edges which are initialized to what they were in the cpd
-    _mu, _pdg = test_lir_on_random_pdg(init = "uniform", gamma=0.0)  # "from_cpd" or "uniform" or "random"
+    _mu, _pdg = test_lir_on_random_pdg(init = "random", gamma=0.0)  # "from_cpd" or "uniform" or "random"
     print(_mu)
     print(_pdg)
