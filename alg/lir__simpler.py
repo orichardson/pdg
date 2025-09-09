@@ -33,7 +33,7 @@ class ParamCPD:
             else:
                 raise ValueError("cpd must have a to_numpy method")
 
-            logits = torch.tensor(arr, dtype=dtype, device=self.device)
+            logits = torch.tensor(np.log(arr), dtype=dtype, device=self.device) # TODO: should log arr
 
 
         elif init == "uniform":
