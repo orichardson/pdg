@@ -1,7 +1,7 @@
+from pathlib import Path
 import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+sys.path.append(str(Path(__file__).absolute().parent.parent.parent))
 
 import random
 from typing import List
@@ -9,13 +9,6 @@ from typing import List
 import torch
 import numpy as np
 
-# from pdg.pdg import PDG
-# from pdg.rv import Variable as Var
-# from pdg.dist import RawJointDist as RJD
-# from pdg.dist import CPT
-# from pdg.alg.lir__simpler import ParamCPD
-# from pdg.alg.lir__simpler import lir_train_simple
-# from pdg.alg.torch_opt_lir import opt_joint  
 from pdg.pdg import PDG
 from pdg.rv import Variable as Var
 from pdg.dist import RawJointDist as RJD

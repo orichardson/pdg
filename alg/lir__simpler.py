@@ -18,6 +18,23 @@ class ParamCPD:
                  mask: Optional[torch.Tensor] = None,
                  dtype=torch.double,
                  device=None):
+        """
+        Initialize a ParamCPD object representing a parameterized CPD.
+
+        Args:
+            X_card (int): Cardinality (number of states) of variable X (rows).
+            Y_card (int): Cardinality (number of states) of variable Y (columns).
+            name (str, optional): Name for this CPD instance. 
+            cpd (optional): An object with a `to_numpy()` method representing the initial CPD. Required if `init` is 'from_cpd'.
+            init (str or torch.Tensor, optional): Initialization method. Options:
+                - 'from_cpd': Initialize from the provided `cpd`.
+                - 'uniform': Initialize logits to all ones (uniform distribution).
+                - 'random': Initialize logits randomly from a normal distribution.
+                - torch.Tensor: Directly use the provided tensor as logits (must match shape (X_card, Y_card)).
+            mask (torch.Tensor, optional): Boolean mask tensor of shape (X_card, Y_card) to restrict valid entries.
+            dtype (torch.dtype, optional):(default: torch.double).
+            device (optional): (default: CPU).
+        """
         self.name = name
         self.X_card = int(X_card)
         self.Y_card = int(Y_card)
