@@ -101,6 +101,7 @@ def lir_train_simple(
     lr: float = 1e-2,
     optimizer_ctor = torch.optim.Adam,
     verbose: bool = False,
+    mu_init = None,
     **inner_kwargs              
 ):
     """
@@ -114,12 +115,20 @@ def lir_train_simple(
         raise ValueError("No ParamCPDs found in PDG M. Nothing to learn.")
 
     opt = optimizer_ctor([P.logits for (_, P) in learnables], lr=lr)
-
     last = None
+    
+    mu_init = mu_init
     for t in range(T):
+
+        def warm_start_init(shape, dtype=torch.double):
+            if mu_init is not None:
+                return mu_init.data.clone().to(dtype)
+            else:
+                return torch.ones(shape, dtype=dtype)
         # inner solve for μ*, given current θ
-        μ_star = opt_joint(M, gamma=gamma, iters=inner_iters, verbose=False, **inner_kwargs)
+        μ_star = opt_joint(M, gamma=gamma, iters=inner_iters, verbose=False, init=warm_start_init, **inner_kwargs)
         μ_star = _detach_mu(μ_star)
+        mu_init = μ_star.data.detach().clone()
 
         # outer gradient on θ only
         opt.zero_grad(set_to_none=True)
