@@ -48,7 +48,10 @@ def _cpd_to_tensor_for_edge(mu, cpd_obj, X, Y):
 		# cpt = torch.tensor(cpt_np, dtype=torch.double, requires_grad=True)
 		# claims = cpd_obj.mask()   # (|X|, |Y|) bool
 		claims = torch.isfinite(cpt2)
-		return cpt2, claims
+		# return cpt2, claims
+	else:
+		cpt2 = torch.tensor(mu.broadcast(cpd_obj), requires_grad=False)
+		claims = torch.isfinite(cpt2)
 
 	return cpt2, claims
 
