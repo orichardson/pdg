@@ -1,3 +1,9 @@
+"""
+This file contains a class
+TensorLibrary
+
+"""
+
 import numpy as np
 import pandas as pd
 from collections import defaultdict
@@ -385,7 +391,11 @@ class LView:
         
         
     def pca_view(self, ax=None, arrows=True, transform=None):
-        """ TODO: only partially refactored! must recompute nametrace. """
+        """
+        TODO: only partially refactored! must recompute nametrace. 
+        TODO: compare with distviz.py and merge. Move things into /viz. 
+        """
+        
         import numpy as np
         from sklearn.decomposition import PCA
         from matplotlib import pyplot as plt
@@ -395,6 +405,10 @@ class LView:
 
         # nametrace = [( "%d"%i, t) for i,t in enumerate(unnamedtraces)] + [(k,t) for k,t in kwtraces.items()]
         # alltraces = np.vstack([nparray_of(trace).reshape(len(trace),-1) for n,trace in nametrace])
+
+        nametrace = None
+        raise NotImplementedError()
+
         all_tensors = np.vstack([v.reshape(-1) for v in self.tensors])
         
         if transform == None:
