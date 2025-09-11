@@ -1,106 +1,111 @@
-# param_cpd.py
 from __future__ import annotations
 from typing import Optional, Tuple
 import torch
 from typing import List
 import numpy as np
+# from pdg.dist import CPT
+from pdg.dist import ParamCPD
 
-# from .param_cpd import ParamCPD
+# class ParamCPD:
 
-class ParamCPD:
+#     def __init__(self,
+#                  X_card: int,
+#                  Y_card: int,
+#                  name: str = "",
+#                  cpd: CPT = None,
+#                  init: str | torch.Tensor = "from_cpd",
+#                  mask: Optional[torch.Tensor] = None,
+#                  dtype=torch.double,
+#                  device=None):
+#         """
+#         Initialize a ParamCPD object representing a parameterized CPD.
 
-    def __init__(self,
-                 X_card: int,
-                 Y_card: int,
-                 name: str = "",
-                 cpd = None,
-                 init: str | torch.Tensor = "from_cpd",
-                 mask: Optional[torch.Tensor] = None,
-                 dtype=torch.double,
-                 device=None):
-        """
-        Initialize a ParamCPD object representing a parameterized CPD.
+#         Args:
+#             X_card (int): Cardinality (number of states) of variable X (rows).
+#             Y_card (int): Cardinality (number of states) of variable Y (columns).
+#             name (str, optional): Name for this CPD instance. 
+#             cpd (optional): An object with a `to_numpy()` method representing the initial CPD. Required if `init` is 'from_cpd'.
+#             init (str or torch.Tensor, optional): Initialization method. Options:
+#                 - 'from_cpd': Initialize from the provided `cpd`.
+#                 - 'uniform': Initialize logits to all ones (uniform distribution).
+#                 - 'random': Initialize logits randomly from a normal distribution.
+#                 - torch.Tensor: Directly use the provided tensor as logits (must match shape (X_card, Y_card)).
+#             mask (torch.Tensor, optional): Boolean mask tensor of shape (X_card, Y_card) to restrict valid entries.
+#             dtype (torch.dtype, optional):(default: torch.double).
+#             device (optional): (default: CPU).
+#         """
+#         self.name = name
+#         self.X_card = int(X_card)
+#         self.Y_card = int(Y_card)
+#         self.dtype = dtype
+#         self.device = device or torch.device("cpu")
+#         self.cpd = cpd
 
-        Args:
-            X_card (int): Cardinality (number of states) of variable X (rows).
-            Y_card (int): Cardinality (number of states) of variable Y (columns).
-            name (str, optional): Name for this CPD instance. 
-            cpd (optional): An object with a `to_numpy()` method representing the initial CPD. Required if `init` is 'from_cpd'.
-            init (str or torch.Tensor, optional): Initialization method. Options:
-                - 'from_cpd': Initialize from the provided `cpd`.
-                - 'uniform': Initialize logits to all ones (uniform distribution).
-                - 'random': Initialize logits randomly from a normal distribution.
-                - torch.Tensor: Directly use the provided tensor as logits (must match shape (X_card, Y_card)).
-            mask (torch.Tensor, optional): Boolean mask tensor of shape (X_card, Y_card) to restrict valid entries.
-            dtype (torch.dtype, optional):(default: torch.double).
-            device (optional): (default: CPU).
-        """
-        self.name = name
-        self.X_card = int(X_card)
-        self.Y_card = int(Y_card)
-        self.dtype = dtype
-        self.device = device or torch.device("cpu")
-        self.cpd = cpd
+#         if init == "from_cpd":
+#             if cpd is None:
+#                 raise ValueError("cpd must be provided when init='from_cpd'")
+#             if hasattr(cpd, "to_numpy"):
+#                 arr = cpd.to_numpy()
+#             else:
+#                 raise ValueError("cpd must have a to_numpy method")
 
-        if init == "from_cpd":
-            if cpd is None:
-                raise ValueError("cpd must be provided when init='from_cpd'")
-            if hasattr(cpd, "to_numpy"):
-                arr = cpd.to_numpy()
-            else:
-                raise ValueError("cpd must have a to_numpy method")
-
-            logits = torch.tensor(np.log(arr), dtype=dtype, device=self.device) # TODO: should log arr
-
-
-        elif init == "uniform":
-            logits = torch.ones(self.X_card, self.Y_card, dtype=dtype, device=self.device)
-        elif init == "random":
-            logits = torch.randn(self.X_card, self.Y_card, dtype=dtype, device=self.device)
-        elif isinstance(init, torch.Tensor):
-            assert init.shape == (self.X_card, self.Y_card)
-            logits = init.to(self.device, dtype)
-        else:
-            raise ValueError("init must be 'uniform', 'random', or a tensor of shape (|X|,|Y|)")
-
-        self.logits = torch.nn.Parameter(logits, requires_grad=True)
-
-        ## U: the mask may be useful later
-        # if mask is None:
-        #     self._mask = None
-        # else:
-        #     if mask.dtype != torch.bool:
-        #         mask = mask.bool()
-        #     assert mask.shape == (self.X_card, self.Y_card)
-        #     self._mask = mask.to(self.device)
-
-    def probs(self) -> torch.Tensor:
-        return torch.softmax(self.logits, dim=-1)
-
-    ## U: the mask may be useful later
-    # def mask(self) -> torch.Tensor:
-    #     if self._mask is None:
-    #         return torch.ones((self.X_card, self.Y_card), dtype=torch.bool, device=self.device)
-    #     return self._mask
-
-    def to_numpy(self):
-        with torch.no_grad():
-            return self.probs().detach().cpu().numpy()
-
-    @property
-    def shape(self) -> Tuple[int, int]:
-        return (self.X_card, self.Y_card)
+#             logits = torch.tensor(np.log(arr), dtype=dtype, device=self.device) # TODO: should log arr
 
 
+#         elif init == "uniform":
+#             logits = torch.ones(self.X_card, self.Y_card, dtype=dtype, device=self.device)
+#         elif init == "random":
+#             logits = torch.randn(self.X_card, self.Y_card, dtype=dtype, device=self.device)
+#         elif isinstance(init, torch.Tensor):
+#             assert init.shape == (self.X_card, self.Y_card)
+#             logits = init.to(self.device, dtype)
+#         else:
+#             raise ValueError("init must be 'uniform', 'random', or a tensor of shape (|X|,|Y|)")
+
+#         self.logits = torch.nn.Parameter(logits, requires_grad=True)
+
+#         ## U: the mask may be useful later
+#         # if mask is None:
+#         #     self._mask = None
+#         # else:
+#         #     if mask.dtype != torch.bool:
+#         #         mask = mask.bool()
+#         #     assert mask.shape == (self.X_card, self.Y_card)
+#         #     self._mask = mask.to(self.device)
+
+#     def probs(self) -> torch.Tensor:
+#         return torch.softmax(self.logits, dim=-1)
+
+#     ## U: the mask may be useful later
+#     # def mask(self) -> torch.Tensor:
+#     #     if self._mask is None:
+#     #         return torch.ones((self.X_card, self.Y_card), dtype=torch.bool, device=self.device)
+#     #     return self._mask
+
+#     def to_numpy(self):
+#         with torch.no_grad():
+#             return self.probs().detach().cpu().numpy()
+
+#     @property
+#     def shape(self) -> Tuple[int, int]:
+#         return (self.X_card, self.Y_card)
 
 
-# ________________________________________________________________________________________
-# ________________________________________________________________________________________
+
+
+# # ________________________________________________________________________________________
+# # ________________________________________________________________________________________
 
 from .torch_opt_lir import opt_joint, torch_score
 def _collect_learnables(pdg) -> List[Tuple[str, ParamCPD]]:
+    """
+    Collects all learnable ParamCPD objects from the edges of a PDG in order to add them to an optimizer.
+    """
     out = []
-    for L, X, Y, α, β, P in pdg.edges("l,X,Y,α,β,P"):
+    # for L, X, Y, α, β, P in pdg.edges("l,X,Y,α,β,P"):
+    #     if isinstance(P, ParamCPD):
+    #         out.append((L, P))
+    for L, P in pdg.edges("l,P"):
         if isinstance(P, ParamCPD):
             out.append((L, P))
     return out
