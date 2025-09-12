@@ -7,7 +7,7 @@ from typing import Union
 from .tree_decomp import tree_decompose
 from ..pdg import PDG
 from ..fg import FactorGraph
-from ..dist import CliqueForest, RawJointDist as RJD
+from ..dist import CliqueForest, RawJointDist as RJD, ParamCPD
 
 import torch
 
@@ -66,7 +66,7 @@ def torch_score_alt(pdg, μ : RJD, γ):
 
 def torch_score(pdg, μ : Union[RJD,CliqueForest], γ):
 	loss = torch.tensor(0.)
-	for X,Y,cpd_df,α,β in pdg.edges("XYPαβ"):
+	for X,Y,cpd_obj,α,β in pdg.edges("XYPαβ"):
 		# print("For edge %s -> %s (α=%.2f, β=%.2f)"%(X.name,Y.name,α,β))
 		# muy_x, muxy, mux = Pr(Y | X), Pr(X, Y), Pr(X)
 		muxy = μ.prob_matrix([X, Y])
@@ -75,11 +75,14 @@ def torch_score(pdg, μ : Union[RJD,CliqueForest], γ):
 		logcond_info = - torch.log(twhere(muxy==0, 1., muy_x))
 		# print(muxy*logcond_info)
 		
-		if cpd_df is None:
+		if cpd_obj is None:
 			logliklihood = 0.
 			logcond_claimed = 0.
-		else:
-			cpt = torch.tensor(μ.broadcast(cpd_df), requires_grad=False)
+		else:	
+			if isinstance(cpd_obj, ParamCPD):
+				cpt = μ.broadcast(cpd_obj.probs(), vfrom=cpd_obj.src_var, vto=cpd_obj.tgt_var, with_torch=True)
+			else:
+				cpt = torch.tensor(μ.broadcast(cpd_obj), requires_grad=False)
 			claims = torch.isfinite(cpt)
 
 			logliklihood = twhere(claims, -torch.log(twhere(cpt==0, LOGZERO, cpt)), 0.)

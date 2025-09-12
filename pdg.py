@@ -342,14 +342,14 @@ class PDG:
 				self._set_edge(*ftl, **attr)
 
 		elif isinstance(data, CPT):
-			self._include_var(data.nfrom)
-			self._include_var(data.nto)
+			self._include_var(data.src_var)
+			self._include_var(data.tgt_var)
 			# label = other.name if hasattr(other, 'name') else \
-			#     self.labeler.fresh(other.nfrom,other.nto)
+			#     self.labeler.fresh(other.src_var,other.tgt_var)
 			if label is None:
-				label = self.labeler.fresh(data.nfrom.name, data.nto.name)
+				label = self.labeler.fresh(data.src_var.name, data.tgt_var.name)
 
-			self._set_edge(data.nfrom.name, data.nto.name, label, cpd=data)
+			self._set_edge(data.src_var.name, data.tgt_var.name, label, cpd=data)
 		
 		elif isinstance(data, ConditionRequest):
 			self._include_var(data.given)
@@ -374,8 +374,8 @@ class PDG:
 				if isinstance(X, Variable): XN = X.name
 				if isinstance(Y,Variable):  YN = Y.name
 			if 'cpd' in data:
-				XN = data['cpd'].nfrom.name
-				YN = data['cpd'].nto.name
+				XN = data['cpd'].src_var.name
+				YN = data['cpd'].tgt_var.name
 			if 'label' in data:
 				label = data['label']
 			else:
@@ -494,14 +494,14 @@ class PDG:
 		# The keys  of the following dict are not present in data, but we add them now.
 		# They are the cannonical names. 
 		lookup = dict(X=X,Y=Y,Xname=Xname,Yname=Yname,alpha=1,beta=1,label=l)
+		# TODO: maybe alpha=0?
 		lookup.update(**data)
 		
 		lookup['S'] = lookup['X']
 		lookup['T'] = lookup['Y']
 		lookup['Sn'] = lookup['Xn'] = lookup['Xname']
 		lookup['Tn'] = lookup['Yn'] = lookup['Yname']
-		 	# TODO: maybe alpha=0?
-
+		lookup['l'] = lookup['L'] = lookup['label']
 		lookup['α'] = lookup['alpha']
 		lookup['β'] = lookup['beta']
 		lookup['P'] = lookup['p'] =  data.get('cpd',None)
