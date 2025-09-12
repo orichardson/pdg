@@ -21,12 +21,14 @@ Var = rv.Variable
 import warnings
 import re
 	
-from .alg.bp import avg_init_pgmpy_BP_calibrate
 
 try:
 	from pgmpy.factors.discrete import TabularCPD
+	_pgmpy_loaded = True
+	from .alg.bp import avg_init_pgmpy_BP_calibrate
 except ImportError:
 	warnings.warn("pgmpy not loaded")
+	_pgmpy_loaded = False
 
 
 # recipe from https://docs.python.org/2.7/library/itertools.html#recipes
@@ -395,32 +397,31 @@ class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
 		# return cls.from_matrix(, index=vfrom.ordered, columns=vto.ordered, tgt_var=vto, src_var= vfrom)
 
 
-	@classmethod
-	def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD, **kwargs):
-		tgt = rv.Variable(tcpd.state_names[tcpd.variable], 
-			name=tcpd.variable)
-		srcnames = tcpd.variables[1:] ## !!! note that get_cardinality() reverses ...
-			# the order of the vaiables (so they don't line up with values) for no reason!
-		if len(srcnames) > 0 :
-			src = reduce(and_, [rv.Variable(tcpd.state_names[l], name=l) 
-				for l in srcnames if l != tgt.name])
-		else: src = rv.Unit
+	if _pgmpy_loaded: ## augment CPT class with pgmpy interface if loaded
+		@classmethod
+		def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD, **kwargs):
+			tgt = rv.Variable(tcpd.state_names[tcpd.variable], 
+				name=tcpd.variable)
+			srcnames = tcpd.variables[1:] ## !!! note that get_cardinality() reverses ...
+				# the order of the vaiables (so they don't line up with values) for no reason!
+			if len(srcnames) > 0 :
+				src = reduce(and_, [rv.Variable(tcpd.state_names[l], name=l) 
+					for l in srcnames if l != tgt.name])
+			else: src = rv.Unit
 
-		return cls.from_matrix(src, tgt, 
-			np.moveaxis(tcpd.values,0,-1).reshape(-1, len(tgt)), **kwargs)
+			return cls.from_matrix(src, tgt, 
+				np.moveaxis(tcpd.values,0,-1).reshape(-1, len(tgt)), **kwargs)
 	
-	################################
+		def to_pgmpy(self):
+			return TabularCPD(self.tgt_var.name, len(self.tgt_var), 
+				values = self.to_numpy().reshape(-1, len(self.tgt_var)).T, 
+				evidence = [v.name for v in self.src_var.atoms], 
+				evidence_card = [len(v) for v in self.src_var.atoms],
+				state_names = {v.name : v.ordered for v in [self.tgt_var, *self.src_var.atoms]}
+				)
 
 	def copy(self, deep=True):
 		return CPT(self, tgt_var=self.tgt_var,src_var=self.src_var)
-
-	def to_pgmpy(self):
-		return TabularCPD(self.tgt_var.name, len(self.tgt_var), 
-			values = self.to_numpy().reshape(-1, len(self.tgt_var)).T, 
-			evidence = [v.name for v in self.src_var.atoms], 
-			evidence_card = [len(v) for v in self.src_var.atoms],
-			state_names = {v.name : v.ordered for v in [self.tgt_var, *self.src_var.atoms]}
-			)
 
 	def broadcast_to(self, varlist) -> np.ndarray:
 		return broadcast(self, varlist, self.src_var, self.tgt_var)
@@ -1104,66 +1105,6 @@ class CliqueForest(Dist):
 		return self.conditional_marginal(vars)
 
 
-	def to_pgmpy_jtree(self):
-		""" may not be connected """
-		from pgmpy.models import JunctionTree
-
-		G = JunctionTree()
-		namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
-		G.add_nodes_from(namednodes)
-		G.add_edges_from([ 
-			(namednodes[i], namednodes[j]) for (i,j) in self.edges
-				if len(set(namednodes[i]) & set(namednodes[j])) > 0
-			])
-		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
-		return G
-
-	def to_pgmpy_jtrees(self):
-		""" one for each subcomponent """
-		from pgmpy.models import JunctionTree
-
-		jj = []
-		for idxset in nx.connected_components(self.Gr):
-			G = JunctionTree()
-			namednodes = [ tuple(v.name for v in self.dists[i].varlist) for i in idxset ]
-			G.add_nodes_from(namednodes)
-			G.add_edges_from([ 
-				(namednodes[i], namednodes[j]) for (i,j) in self.edges
-					if len(set(namednodes[i]) & set(namednodes[j])) > 0
-					and i in idxset and j in idxset
-				])
-			G.add_factors(*[self.dists[i].to_pgmpy_discrete_factor() for i in idxset])
-			jj.append(G)
-
-		return jj
-
-	def _fallback_joint_query_bp(self, varilist):
-		J = self.to_pgmpy_jtree()
-		bp = BeliefPropagation(J)
-
-		ans = bp.query([v.name for v in varilist])
-		return RawJointDist(ans.values, varilist)
-    
-	def _fallback_recalibrate_bp(self,avg_init=True):
-		# J = self.to_pgmpy_jtree()
-		# jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
-		jj = self.to_pgmpy_jtrees()
-
-		for j in jj:
-			if avg_init:
-				bp = avg_init_pgmpy_BP_calibrate(j)
-			else:
-				bp = BeliefPropagation(j)
-				bp.calibrate()
-
-			for varname_tuple, df in bp.clique_beliefs.items():
-				i = self.lookup[frozenset(varname_tuple)]
-				idx1 = [*range(len(self.dists[i].varlist))]
-				idx2 = [df.variables.index(v.name) for v in self.dists[i].varlist]
-				self.dists[i].data[:] = \
-					np.moveaxis(df.values, idx2,idx1)
-		
-		self.renormalized()
 	
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		return broadcast(cpt, self.varlist, vfrom, vto)
@@ -1282,3 +1223,67 @@ class CliqueForest(Dist):
 
 		raise NotImplementedError("not all variables are in the same cluster;"+
 			" this doesn't work yet.")
+
+
+	##############################################################
+	if _pgmpy_loaded: ############################################
+		def to_pgmpy_jtree(self):
+			""" may not be connected """
+			from pgmpy.models import JunctionTree
+
+			G = JunctionTree()
+			namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
+			G.add_nodes_from(namednodes)
+			G.add_edges_from([ 
+				(namednodes[i], namednodes[j]) for (i,j) in self.edges
+					if len(set(namednodes[i]) & set(namednodes[j])) > 0
+				])
+			G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
+			return G
+
+		def to_pgmpy_jtrees(self):
+			""" one for each subcomponent """
+			from pgmpy.models import JunctionTree
+
+			jj = []
+			for idxset in nx.connected_components(self.Gr):
+				G = JunctionTree()
+				namednodes = [ tuple(v.name for v in self.dists[i].varlist) for i in idxset ]
+				G.add_nodes_from(namednodes)
+				G.add_edges_from([ 
+					(namednodes[i], namednodes[j]) for (i,j) in self.edges
+						if len(set(namednodes[i]) & set(namednodes[j])) > 0
+						and i in idxset and j in idxset
+					])
+				G.add_factors(*[self.dists[i].to_pgmpy_discrete_factor() for i in idxset])
+				jj.append(G)
+
+			return jj
+
+		def _fallback_joint_query_bp(self, varilist):
+			J = self.to_pgmpy_jtree()
+			bp = BeliefPropagation(J)
+
+			ans = bp.query([v.name for v in varilist])
+			return RawJointDist(ans.values, varilist)
+	    
+		def _fallback_recalibrate_bp(self,avg_init=True):
+			# J = self.to_pgmpy_jtree()
+			# jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
+			jj = self.to_pgmpy_jtrees()
+
+			for j in jj:
+				if avg_init:
+					bp = avg_init_pgmpy_BP_calibrate(j)
+				else:
+					bp = BeliefPropagation(j)
+					bp.calibrate()
+
+				for varname_tuple, df in bp.clique_beliefs.items():
+					i = self.lookup[frozenset(varname_tuple)]
+					idx1 = [*range(len(self.dists[i].varlist))]
+					idx2 = [df.variables.index(v.name) for v in self.dists[i].varlist]
+					self.dists[i].data[:] = \
+						np.moveaxis(df.values, idx2,idx1)
+			
+			self.renormalized()

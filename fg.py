@@ -19,7 +19,6 @@ from .dist import CPT, RawJointDist as RJD
 
 # from typing import Iterable
 
-from pgmpy.models import MarkovNetwork
 
 def canonical_varlist(factors):
     subs = '₀₁₂₃₄₅₆₇₈₉'
@@ -92,6 +91,7 @@ class FactorGraph:
         # esimate Pr(vars)    
                 
     def to_pgmpy_markov_net(self):
+        from pgmpy.models import MarkovNetwork
         from pgmpy.factors.discrete import DiscreteFactor
         
         mn = MarkovNetwork()
