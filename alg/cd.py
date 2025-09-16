@@ -1,4 +1,12 @@
-# Contrastive divergence
+"""
+VERY ROUGH DRAFT
+
+An idea for an inference procedure based on Hinton and Carreira-Perpinan's work on Contrastive Divergence Learning.
+
+https://www.cs.toronto.edu/~hinton/absps/tr00-004.pdf
+https://www.cs.toronto.edu/~fritz/absps/cdmiguel.pdf
+
+"""
 
 from ..rv import ConditionRequest, Variable as Var
 from ..pdg import PDG
@@ -24,5 +32,5 @@ class CD:
 
         for i in range(100):
             # estimate gradient from MCMC sample of model.
-            gradient =
+            gradient = None
             guess += gradient

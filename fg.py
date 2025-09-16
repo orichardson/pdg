@@ -1,3 +1,14 @@
+"""
+A module for dealing with factor graphs (fgs). 
+Currently relatively bare. Present usage is largely about turning `PDG`s into `FactorGraph`s and `FactorGraph`s into `pgmpy.MarkovNetwork`s. 
+
+A factor graph over a collection of variables is an undirected graphical model that determines a joint distribution by multiplying a number of joint distributions and renormalizing. For example:
+
+ μ(X,Y,Z) = f1(X) * f2(X,Z) * f3(Z,Y) * f4(Y)  / Z 
+ 
+ where f1-4 are non-negative functions of their inputs, and Z is the required normalization constant. 
+"""
+
 from operator import mul
 from functools import reduce
 from itertools import combinations
@@ -8,7 +19,6 @@ from .dist import CPT, RawJointDist as RJD
 
 # from typing import Iterable
 
-from pgmpy.models import MarkovNetwork
 
 def canonical_varlist(factors):
     subs = '₀₁₂₃₄₅₆₇₈₉'
@@ -70,7 +80,7 @@ class FactorGraph:
         sample = init_sample if init_sample is not None \
             else {v.name : np.random.choice(v) for v in self.vars}
             
-        raise NotImplemented
+        raise NotImplementedError()
         
         for it in range(iters):
             for v in self.vars: # go over ALL variables;
@@ -108,4 +118,3 @@ class FactorGraph:
         
 class ExpFam(FactorGraph):
     pass
-

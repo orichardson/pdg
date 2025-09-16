@@ -5,7 +5,7 @@ import networkx as nx
 from pgmpy.inference.ExactInference import BeliefPropagation
 
 from abc import ABC
-from typing import FrozenSet, List, Type, TypeVar, Mapping
+from typing import FrozenSet, List, Type, TypeVar, Mapping, Optional, Tuple
 import collections
 
 from functools import reduce
@@ -21,12 +21,14 @@ Var = rv.Variable
 import warnings
 import re
 	
-from .alg.bp import avg_init_pgmpy_BP_calibrate
 
 try:
 	from pgmpy.factors.discrete import TabularCPD
+	_pgmpy_loaded = True
+	from .alg.bp import avg_init_pgmpy_BP_calibrate
 except ImportError:
 	warnings.warn("pgmpy not loaded")
+	_pgmpy_loaded = False
 
 
 # recipe from https://docs.python.org/2.7/library/itertools.html#recipes
@@ -106,9 +108,9 @@ def broadcast(mat_like, varlist,
 	> mat_like: the argument to be broadcast; might be a dataframe, a CPT, or a np.matrix
 	> vfrom,vto: the attached variables (supply only if cpt does not have this data)
 	"""
-	if isinstance(mat_like, CPT):
-		if vfrom is None: vfrom = mat_like.nfrom
-		if vto is None: vto = mat_like.nto
+	if isinstance(mat_like, (CPT,ParamCPD)):
+		if vfrom is None: vfrom = mat_like.src_var
+		if vto is None: vto = mat_like.tgt_var
 
 	IDX = _idxs(varlist, vfrom,vto,multi=True)
 	UIDX = np.unique(IDX).tolist() # sorted also
@@ -149,14 +151,14 @@ def broadcast(mat_like, varlist,
 
 
 def broadcast_torch(tensor_like,
-                    varlist, df=None,
-                    vfrom=None,
-                    vto=None):
+                    varlist,
+                    vfrom,
+                    vto):
     """
     Broadcast a factor/tensor living on (vfrom,vto) into the global varlist order.
 
     Returns a tensor with shape:
-      - size |var| on axes whose *first occurrence index* is in IDX
+      - size |var| on dimensions corresponding to variables that contribute to vfrom or vto;
       - size 1 on axes for variables not in the factor
     If varlist has duplicates of the same Var, those axes are 'tied' via expand.
     All operations preserve autograd.
@@ -165,8 +167,6 @@ def broadcast_torch(tensor_like,
       - len(var) -> cardinality (like your Vars)
       - tensor_like is a torch.Tensor (keep its gradients).
     """
-    if vfrom is None: vfrom = df.nfrom
-    if vto is None: vto = df.nto
     x = tensor_like
     # if not isinstance(x, torch.Tensor):
     #     # You *can* wrap other types, but then there is no autograd to preserve.
@@ -278,6 +278,10 @@ def _process_vars(varlist, vars, given=None):
 	return targetvars, conditionvars
 
 
+###############################################################
+##   now for the main content of things. 
+###############################################################
+
 
 class CDist(ABC): pass
 class Dist(CDist): pass
@@ -286,8 +290,8 @@ SubCPT = TypeVar('SubCPT' , bound='CPT')
 
 
 class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
-	PARAMS = {"nfrom", "nto"}
-	_internal_names = pd.DataFrame._internal_names + ["nfrom", "nto"]
+	PARAMS = {"src_var", "tgt_var"}
+	_internal_names = pd.DataFrame._internal_names + ["src_var", "tgt_var"]
 	_internal_names_set = set(_internal_names)
 
 	def __init__(self,*args,**kwargs):
@@ -308,7 +312,7 @@ class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
 		return pd.DataFrame(self.to_numpy(), columns = cols, index=rows)
 
 	@classmethod
-	def _from_matrix_inner(cls: Type[SubCPT], nfrom, nto, matrix, multi=True, flatten=False) -> SubCPT:
+	def _from_matrix_inner(cls: Type[SubCPT], src_var, tgt_var, matrix, multi=True, flatten=False) -> SubCPT:
 		def makeidx( vari ):
 			if multi and False:
 				names=vari.name.split("×")
@@ -342,30 +346,30 @@ class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
 			else:
 				return vari.ordered
 
-		return cls(matrix, index=makeidx(nfrom), columns=makeidx(nto), nto=nto,nfrom=nfrom)
+		return cls(matrix, index=makeidx(src_var), columns=makeidx(tgt_var), tgt_var=tgt_var,src_var=src_var)
 
 	@classmethod
-	def from_matrix(cls: Type[SubCPT], nfrom, nto, matrix, multi=True, flatten=False) -> SubCPT:
-		return cls._from_matrix_inner(nfrom,nto,matrix,multi,flatten).check_normalized()
+	def from_matrix(cls: Type[SubCPT], src_var, tgt_var, matrix, multi=True, flatten=False) -> SubCPT:
+		return cls._from_matrix_inner(src_var,tgt_var,matrix,multi,flatten).check_normalized()
 
 	@classmethod
-	def make_stoch(cls: Type[SubCPT], nfrom, nto, matrix, multi=True, flatten=False) -> SubCPT:
-		return cls._from_matrix_inner(nfrom,nto,matrix,multi,flatten).renormalized()
+	def make_stoch(cls: Type[SubCPT], src_var, tgt_var, matrix, multi=True, flatten=False) -> SubCPT:
+		return cls._from_matrix_inner(src_var,tgt_var,matrix,multi,flatten).renormalized()
 
 	@classmethod
-	def from_ddict(cls: Type[SubCPT], nfrom, nto, data) -> SubCPT:
-		for a in nfrom:
+	def from_ddict(cls: Type[SubCPT], src_var, tgt_var, data) -> SubCPT:
+		for a in src_var:
 			row = data[a]
 			if not isinstance(row, Mapping):
 				try:
 					iter(row)
 				except:
-					data[a] = { nto.default_value : row }
+					data[a] = { tgt_var.default_value : row }
 				else:
-					data[a] = { b : v for (b,v) in zip(nto,row)}
+					data[a] = { b : v for (b,v) in zip(tgt_var,row)}
 
 			total = sum(v for b,v in data[a].items())
-			remainder = nto - set(data[a].keys())
+			remainder = tgt_var - set(data[a].keys())
 			if len(remainder) == 1:
 				data[a][next(iter(remainder))] = 1 - total
 			elif total == 1:
@@ -373,7 +377,7 @@ class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
 					data[a][b] = 0
 
 		matrix = pd.DataFrame.from_dict(data , orient='index')
-		return cls(matrix, index=nfrom.ordered, columns=nto.ordered, nto=nto,nfrom=nfrom).check_normalized()
+		return cls(matrix, index=src_var.ordered, columns=tgt_var.ordered, tgt_var=tgt_var,src_var=src_var).check_normalized()
 
 	@classmethod
 	def make_random(cls : Type[SubCPT], vfrom, vto):
@@ -390,38 +394,37 @@ class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
 			mat[i, vto.ordered.index(mapfi)] = 1
 
 		return cls.from_matrix(vfrom,vto,mat, **kwargs)
-		# return cls.from_matrix(, index=vfrom.ordered, columns=vto.ordered, nto=vto, nfrom= vfrom)
+		# return cls.from_matrix(, index=vfrom.ordered, columns=vto.ordered, tgt_var=vto, src_var= vfrom)
 
 
-	@classmethod
-	def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD, **kwargs):
-		tgt = rv.Variable(tcpd.state_names[tcpd.variable], 
-			name=tcpd.variable)
-		srcnames = tcpd.variables[1:] ## !!! note that get_cardinality() reverses ...
-			# the order of the vaiables (so they don't line up with values) for no reason!
-		if len(srcnames) > 0 :
-			src = reduce(and_, [rv.Variable(tcpd.state_names[l], name=l) 
-				for l in srcnames if l != tgt.name])
-		else: src = rv.Unit
+	if _pgmpy_loaded: ## augment CPT class with pgmpy interface if loaded
+		@classmethod
+		def from_pgmpy(cls: Type[SubCPT], tcpd : TabularCPD, **kwargs):
+			tgt = rv.Variable(tcpd.state_names[tcpd.variable], 
+				name=tcpd.variable)
+			srcnames = tcpd.variables[1:] ## !!! note that get_cardinality() reverses ...
+				# the order of the vaiables (so they don't line up with values) for no reason!
+			if len(srcnames) > 0 :
+				src = reduce(and_, [rv.Variable(tcpd.state_names[l], name=l) 
+					for l in srcnames if l != tgt.name])
+			else: src = rv.Unit
 
-		return cls.from_matrix(src, tgt, 
-			np.moveaxis(tcpd.values,0,-1).reshape(-1, len(tgt)), **kwargs)
+			return cls.from_matrix(src, tgt, 
+				np.moveaxis(tcpd.values,0,-1).reshape(-1, len(tgt)), **kwargs)
 	
-	################################
+		def to_pgmpy(self):
+			return TabularCPD(self.tgt_var.name, len(self.tgt_var), 
+				values = self.to_numpy().reshape(-1, len(self.tgt_var)).T, 
+				evidence = [v.name for v in self.src_var.atoms], 
+				evidence_card = [len(v) for v in self.src_var.atoms],
+				state_names = {v.name : v.ordered for v in [self.tgt_var, *self.src_var.atoms]}
+				)
 
 	def copy(self, deep=True):
-		return CPT(self, nto=self.nto,nfrom=self.nfrom)
-
-	def to_pgmpy(self):
-		return TabularCPD(self.nto.name, len(self.nto), 
-			values = self.to_numpy().reshape(-1, len(self.nto)).T, 
-			evidence = [v.name for v in self.nfrom.atoms], 
-			evidence_card = [len(v) for v in self.nfrom.atoms],
-			state_names = {v.name : v.ordered for v in [self.nto, *self.nfrom.atoms]}
-			)
+		return CPT(self, tgt_var=self.tgt_var,src_var=self.src_var)
 
 	def broadcast_to(self, varlist) -> np.ndarray:
-		return broadcast(self, varlist, self.nfrom, self.nto)
+		return broadcast(self, varlist, self.src_var, self.tgt_var)
 
 
 	def check_normalized(self) -> bool:
@@ -449,6 +452,97 @@ class CPT(CDist, pd.DataFrame, metaclass=util.CopiedABC):
 			
 		"""
 		pass
+	
+	
+class ParamCPD(CDist):
+	
+	def __init__(self,
+	             # X_card: int,
+	             # Y_card: int,
+				 src_var : Var,
+				 tgt_var : Var,
+	             name: str = "",
+	             cpd = None,
+	             init: str | torch.Tensor = "from_cpd",
+	             mask: Optional[torch.Tensor] = None,
+	             dtype=torch.double,
+	             device=torch.device("cpu")):
+		"""
+		Initialize a ParamCPD object representing a parameterized CPD.
+
+		Args:
+		    X_card (int): Cardinality (number of states) of variable X (rows).
+		    Y_card (int): Cardinality (number of states) of variable Y (columns).
+		    name (str, optional): Name for this CPD instance. 
+		    cpd (optional): An object with a `to_numpy()` method representing the initial CPD. Required if `init` is 'from_cpd'.
+		    init (str or torch.Tensor, optional): Initialization method. Options:
+		        - 'from_cpd': Initialize from the provided `cpd`.
+		        - 'uniform': Initialize logits to all ones (uniform distribution).
+		        - 'random': Initialize logits randomly from a normal distribution.
+		        - torch.Tensor: Directly use the provided tensor as logits (must match shape (X_card, Y_card)).
+		    mask (torch.Tensor, optional): Boolean mask tensor of shape (X_card, Y_card) to restrict valid entries.
+		    dtype (torch.dtype, optional):(default: torch.double).
+		    device (optional): (default: CPU).
+		"""
+		self.name = name
+		# self.X_card = int(X_card)
+		# self.Y_card = int(Y_card)
+		self.src_var = src_var
+		self.tgt_var = tgt_var
+		self.dtype = dtype
+		self.device = device
+		self.cpd = cpd
+
+		if init == "from_cpd":
+			# TODO: rmoeve the lines below. 
+			# the checks here are unpythonic; it's better to just try and call cpd.to_numpy() and then see if it works. If it doesn't
+			if cpd is None:
+			    raise ValueError("cpd must be provided when init='from_cpd'")
+			if hasattr(cpd, "to_numpy"):
+			    arr = cpd.to_numpy()
+			else:
+			    raise ValueError("cpd must have a to_numpy method")
+
+			logits = torch.tensor(np.log(arr), dtype=dtype, device=self.device)
+
+
+		elif init == "uniform":
+		    logits = torch.zeros(len(src_var), len(tgt_var), dtype=dtype, device=self.device)
+		elif init == "random":
+		    logits = torch.randn(len(src_var), len(tgt_var), dtype=dtype, device=self.device)
+		elif isinstance(init, torch.Tensor):
+		    assert init.shape == (len(src_var), len(tgt_var))
+		    logits = init.to(self.device, dtype)
+		else:
+			raise ValueError("init must be 'uniform', 'random', or a tensor of shape (|X|,|Y|)")
+
+		self.logits = torch.nn.Parameter(logits, requires_grad=True)
+
+		## U: the mask may be useful later
+		# if mask is None:
+		#     self._mask = None
+		# else:
+		#     if mask.dtype != torch.bool:
+		#         mask = mask.bool()
+		#     assert mask.shape == (self.X_card, self.Y_card)
+		#     self._mask = mask.to(self.device)
+
+	def probs(self) -> torch.Tensor:
+		return torch.softmax(self.logits, dim=-1)
+
+	## U: the mask may be useful later
+	# def mask(self) -> torch.Tensor:
+	#     if self._mask is None:
+	#         return torch.ones((self.X_card, self.Y_card), dtype=torch.bool, device=self.device)
+	#     return self._mask
+
+	def to_numpy(self):
+		with torch.no_grad():
+			return self.probs().detach().cpu().numpy()
+
+	@property
+	def shape(self) -> Tuple[int, int]:
+		return (len(self.src_var), len(self.tgt_var))
 		
 
 ## useless helper methods to either use dict values or list.
@@ -601,11 +695,9 @@ class RawJointDist(Dist):
 	def _idxs(self, *varis, multi=False):
 		return _idxs(self.varlist, *varis, multi=multi)
 
-	def broadcast(self, mat_like, vfrom=None, vto=None) -> np.array:
-		return broadcast(mat_like, self.varlist, vfrom, vto)
+	def broadcast(self, mat_like, vfrom=None, vto=None, with_torch=False):
+		return (broadcast_torch if with_torch else broadcast)(mat_like, self.varlist, vfrom, vto)
 
-	def broadcast_torch(self, mat_like, df=None, vfrom=None, vto=None) :
-		return broadcast_torch(mat_like, self.varlist, df, vfrom, vto)
 
 	####################### OPERATIONS #######################
 
@@ -1013,66 +1105,6 @@ class CliqueForest(Dist):
 		return self.conditional_marginal(vars)
 
 
-	def to_pgmpy_jtree(self):
-		""" may not be connected """
-		from pgmpy.models import JunctionTree
-
-		G = JunctionTree()
-		namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
-		G.add_nodes_from(namednodes)
-		G.add_edges_from([ 
-			(namednodes[i], namednodes[j]) for (i,j) in self.edges
-				if len(set(namednodes[i]) & set(namednodes[j])) > 0
-			])
-		G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
-		return G
-
-	def to_pgmpy_jtrees(self):
-		""" one for each subcomponent """
-		from pgmpy.models import JunctionTree
-
-		jj = []
-		for idxset in nx.connected_components(self.Gr):
-			G = JunctionTree()
-			namednodes = [ tuple(v.name for v in self.dists[i].varlist) for i in idxset ]
-			G.add_nodes_from(namednodes)
-			G.add_edges_from([ 
-				(namednodes[i], namednodes[j]) for (i,j) in self.edges
-					if len(set(namednodes[i]) & set(namednodes[j])) > 0
-					and i in idxset and j in idxset
-				])
-			G.add_factors(*[self.dists[i].to_pgmpy_discrete_factor() for i in idxset])
-			jj.append(G)
-
-		return jj
-
-	def _fallback_joint_query_bp(self, varilist):
-		J = self.to_pgmpy_jtree()
-		bp = BeliefPropagation(J)
-
-		ans = bp.query([v.name for v in varilist])
-		return RawJointDist(ans.values, varilist)
-    
-	def _fallback_recalibrate_bp(self,avg_init=True):
-		# J = self.to_pgmpy_jtree()
-		# jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
-		jj = self.to_pgmpy_jtrees()
-
-		for j in jj:
-			if avg_init:
-				bp = avg_init_pgmpy_BP_calibrate(j)
-			else:
-				bp = BeliefPropagation(j)
-				bp.calibrate()
-
-			for varname_tuple, df in bp.clique_beliefs.items():
-				i = self.lookup[frozenset(varname_tuple)]
-				idx1 = [*range(len(self.dists[i].varlist))]
-				idx2 = [df.variables.index(v.name) for v in self.dists[i].varlist]
-				self.dists[i].data[:] = \
-					np.moveaxis(df.values, idx2,idx1)
-		
-		self.renormalized()
 	
 	def broadcast(self, cpt : CPT, vfrom=None, vto=None) -> np.array:
 		return broadcast(cpt, self.varlist, vfrom, vto)
@@ -1191,3 +1223,67 @@ class CliqueForest(Dist):
 
 		raise NotImplementedError("not all variables are in the same cluster;"+
 			" this doesn't work yet.")
+
+
+	##############################################################
+	if _pgmpy_loaded: ############################################
+		def to_pgmpy_jtree(self):
+			""" may not be connected """
+			from pgmpy.models import JunctionTree
+
+			G = JunctionTree()
+			namednodes = [ tuple(v.name for v in C.varlist) for C in self.dists ]
+			G.add_nodes_from(namednodes)
+			G.add_edges_from([ 
+				(namednodes[i], namednodes[j]) for (i,j) in self.edges
+					if len(set(namednodes[i]) & set(namednodes[j])) > 0
+				])
+			G.add_factors(*[rjd.to_pgmpy_discrete_factor() for rjd in self.dists])
+			return G
+
+		def to_pgmpy_jtrees(self):
+			""" one for each subcomponent """
+			from pgmpy.models import JunctionTree
+
+			jj = []
+			for idxset in nx.connected_components(self.Gr):
+				G = JunctionTree()
+				namednodes = [ tuple(v.name for v in self.dists[i].varlist) for i in idxset ]
+				G.add_nodes_from(namednodes)
+				G.add_edges_from([ 
+					(namednodes[i], namednodes[j]) for (i,j) in self.edges
+						if len(set(namednodes[i]) & set(namednodes[j])) > 0
+						and i in idxset and j in idxset
+					])
+				G.add_factors(*[self.dists[i].to_pgmpy_discrete_factor() for i in idxset])
+				jj.append(G)
+
+			return jj
+
+		def _fallback_joint_query_bp(self, varilist):
+			J = self.to_pgmpy_jtree()
+			bp = BeliefPropagation(J)
+
+			ans = bp.query([v.name for v in varilist])
+			return RawJointDist(ans.values, varilist)
+	    
+		def _fallback_recalibrate_bp(self,avg_init=True):
+			# J = self.to_pgmpy_jtree()
+			# jj = [nx.induced_subgraph(J,ns) for ns in nx.connected_components(J)]
+			jj = self.to_pgmpy_jtrees()
+
+			for j in jj:
+				if avg_init:
+					bp = avg_init_pgmpy_BP_calibrate(j)
+				else:
+					bp = BeliefPropagation(j)
+					bp.calibrate()
+
+				for varname_tuple, df in bp.clique_beliefs.items():
+					i = self.lookup[frozenset(varname_tuple)]
+					idx1 = [*range(len(self.dists[i].varlist))]
+					idx2 = [df.variables.index(v.name) for v in self.dists[i].varlist]
+					self.dists[i].data[:] = \
+						np.moveaxis(df.values, idx2,idx1)
+			
+			self.renormalized()

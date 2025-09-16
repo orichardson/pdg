@@ -20,7 +20,7 @@ class Automaton:
 		elif l in M.edgedata or l in self.pdg.Ed:
 			# XYl = M._get_edgekey(l)
 			cpd = M[l]
-			X,Y = cpd.nfrom, cpd.nto
+			X,Y = cpd.src_var, cpd.tgt_var
 			pY_X = self.state.broadcast(cpd)
 			curr = self.state.prob_matrix(Y|X)
 
@@ -33,7 +33,7 @@ class Automaton:
 		M = self.pdg
 		if l in M.edgedata or l in self.pdg.Ed:
 			cpd = M[l]
-			X,Y = cpd.nfrom, cpd.nto
+			X,Y = cpd.src_var, cpd.tgt_var
 			pY_X = self.state.broadcast(cpd)
 			curr = self.state.prob_matrix(Y|X)
 
@@ -71,4 +71,3 @@ class Automaton:
 
 
 		
-
