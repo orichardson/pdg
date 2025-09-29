@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdg"
+version = "0.1.0"
+description = "Probabilistic dependency graphs (PDG) library."
+readme = "readme.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Oliver Richardson" }]
+
+dependencies = [
+  "numpy>=1.22",
+  "scipy>=1.8",
+  "pandas>=1.4",
+  "networkx>=2.6",
+  "pgmpy>=0.1.20",
+  "torch>=1.9"
+]
+
+[project.optional-dependencies]
+viz = [
+  "matplotlib>=3.5",
+  "seaborn>=0.11",
+  "scikit-learn>=1.0"
+]
+cvx = [
+  "cvxpy>=1.1"
+]
+
+[tool.setuptools]
+packages = ["pdg", "pdg.alg", "pdg.gen", "pdg.lib", "pdg.sim", "pdg.util"]
+include-package-data = false
+
+[tool.setuptools.package-dir]
+pdg = "."
+
+
