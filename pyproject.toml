@@ -31,10 +31,7 @@ cvx = [
 ]
 
 [tool.setuptools]
-packages = ["pdg", "pdg.alg", "pdg.gen", "pdg.lib", "pdg.sim", "pdg.util"]
+packages = { find = { include = ["pdg*"], exclude = ["examples*", "docs*", "scratch*", "viz*"] } }
 include-package-data = false
-
-[tool.setuptools.package-dir]
-pdg = "."
 
 
