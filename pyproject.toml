@@ -31,7 +31,11 @@ cvx = [
 ]
 
 [tool.setuptools]
-packages = { find = { include = ["pdg*"], exclude = ["examples*", "docs*", "scratch*", "viz*"] } }
-include-package-data = false
+package-dir = { "" = "src" }
+packages = { find = { where = ["src"], include = ["pdg*"] } }
+include-package-data = true
+
+[tool.setuptools.package-data]
+"pdg.lib" = ["*.json"]
 
 
