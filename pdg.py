@@ -1,11 +1,15 @@
+""""
+This module contains the most important parts of 
+
+"""
+
 # %load_ext autoreload
 # %autoreload 2
 
 # import pandas as pd
-import sys # for printing.
+# import sys # for printing.
 import warnings
 import random
-# from random import random
 import numpy as np
 import networkx as nx
 
@@ -20,52 +24,50 @@ from .dist import RawJointDist as RJD, CPT, CliqueForest#, Dist, CDist,
 from .dist import z_mult, zz1_div
 
 
-try:
+########### Conditional imports, depending on what is installed
+try: # import torch? Often useful but not critical to use the library.
 	import torch
 	
 	LOGZERO=1E12
 	twhere,tlog = torch.where, torch.log
-	# zlog = lambda t : twhere(t==0, 0., tlog(twhere(t==0, LOGZERO, t))) 
 	def tzmul(prob, maybe_nan):
 		return twhere(prob == 0, 0., twhere(torch.isnan(maybe_nan), 0., maybe_nan) * prob)   
-
 except ImportError:
 	print("No torch; only numpy backend")
-try:
+
+try: ### import pgmpy?  If installed, we will provide hooks. Else, also fine.
 	from pgmpy.models import BayesianNetwork
 except ImportError:
-	import warnings
 	warnings.warn("pgmpy module not found; PGMPY conversions unavailable");
 
 
-class Labeler:
-	# NAMES = ['p','q','r']
-
+class CountLabeler:
+	"""
+	A simple class for generating names for things---mostly  for conditional probabilities. This default implementation simply names things `p{i}` for i=1,2,...
+	"""
 	def __init__(self, basenames=['p']):
 		self._counter = 0
 		self._basenames = basenames
-		# self._edge_specific_counts = collections.defaultdict(lambda: 0)
-		self._edge_specific_counts = {}
 
 	def fresh(self, vfrom, vto, **ctxt):
-		self._counter += 1
-
-		if (vfrom, vto) not in self._edge_specific_counts:
-			self._edge_specific_counts[(vfrom,vto)] = 0
-		self._edge_specific_counts[(vfrom,vto)] += 1
-		
+		self._counter += 1		
 		return self._basenames[0] + str(self._counter)
 		
 	def copy(self):
-		l = Labeler(self._basenames)
+		l = CountLabeler(self._basenames)
 		l._counter = self._counter
-		l._edge_specific_counts.update(self._edge_specific_counts)
 		return l
+		
+	def __repr__(self):
+		return f"CountLabeler(count={self._counter})"
 
+
+####################################################
+# Main PDG class starts here.
+#####################################################
 class PDG:
-	# By default, use the base labeleler, which
-	# just gives a fresh label by incrementing a counter.
-	def __init__(self, labeler: Labeler = Labeler()):
+
+	def __init__(self, labeler = CountLabeler()):
 		self.vars = {"1" : Unit } # varname => Variable
 		self.edgedata = collections.defaultdict(dict)
 			# { (nodefrom str, node to str, label) => { attribute dict } }
@@ -95,7 +97,6 @@ class PDG:
 
 	@property
 	def stats(self):
-		# TODO implement this properly
 		return dict(
 			n_edges = len(self.edges()),
 			n_worlds = int(np.prod(self.dshape)),
@@ -110,12 +111,17 @@ class PDG:
 		"""
 		Custom string interpolation for interpreting PDG queries & command, making it
 		easier to construct things and do work in the context of a PDG.
-		Examples:
-		M('AB')  replaces  Variable.product(M.vars['A'], M.vars['B'])
 		
-		Future:
-		M('A B -> C')  returns  a β-combination of cpts.
-		M('A B -> B C := ', P)  adds a matrix with the appropriate types,
+		Examples:
+		---------
+		M('AB')  replaces  Variable.product(M.vars['A'], M.vars['B'])
+		M(p) 
+		
+		
+		Functionality Wishlist:
+		----
+		M('A B -> C')  to return  a β-combination of cpts.
+		M('A B -> B C := ', P)  to add a matrix with the appropriate types,
 		and any missing variables with the right # of elements, if they are msising.
 		"""
 		connectives = ["->"]
@@ -133,31 +139,6 @@ class PDG:
 			if all(isinstance(o,Variable) for o in objects):
 				return Variable.product(*objects) if len(objects) != 1 else objects[0]
 
-	
-	## No longer necessary??
-	# def __getstate__(self):
-	# 	state = self.__dict__.copy()
-	# 	del state['labeler']
-	# 	state['_labeler_dict'] = self.labeler.__dict__
-	# 	return state
-	
-	# def __setstate__(self, state):
-	# 	self.__dict__ = state
-	# 	self.labeler = Labeler()
-	# 	self.labeler.__dict__  = state['_labeler_dict']
-	# 	del self.__dict__['_labeler_dict']
-
-
-	# generates <node_name_from, node_name_to, edge_label>
-	# @property
-	# def E(self, include_cpts = False) -> Iterator[str, str, str, Number]:
-	#     for i,j in self.cpds.keys():
-	#         if include_cpts:
-	#             for l, L in cpts[i,j].items():
-	#                 yield (i,j,l), L
-	#         else:
-	#             for l in cpds[i,j].keys():
-	#                 yield i,j,l
 
 	def subpdg(self, *descriptors):
 		minime = PDG(self.labeler)
@@ -172,17 +153,16 @@ class PDG:
 		return minime
 
 	def copy(self) -> 'PDG':
-		rslt = PDG(self.labeler.copy())
-		# rslt.vars = dict(**self.vars) # variables don't need a deep copy.
+		newme = PDG(self.labeler.copy())
 
 		for vn, v in self.vars.items():
-			rslt._include_var(v,vn)
+			newme._include_var(v,vn)
 
 		for ftl, attr in self.edgedata.items():
-			rslt._set_edge(*ftl, **attr)
+			newme._set_edge(*ftl, **attr)
 
-		rslt._apply_structure();
-		return rslt
+		newme._apply_structure();
+		return newme
 
 
 	@property
@@ -349,7 +329,9 @@ class PDG:
 		cpt, or a variable, or a list or tuple of cpts.
 
 		Can be given labels by
-		>>> M: PDG  += "ℓ", p : CPT
+		```
+		>  M: PDG  += "ℓ", p : CPT
+		```
 		"""
 
 		if isinstance(data, PDG):
@@ -360,14 +342,14 @@ class PDG:
 				self._set_edge(*ftl, **attr)
 
 		elif isinstance(data, CPT):
-			self._include_var(data.nfrom)
-			self._include_var(data.nto)
+			self._include_var(data.src_var)
+			self._include_var(data.tgt_var)
 			# label = other.name if hasattr(other, 'name') else \
-			#     self.labeler.fresh(other.nfrom,other.nto)
+			#     self.labeler.fresh(other.src_var,other.tgt_var)
 			if label is None:
-				label = self.labeler.fresh(data.nfrom.name, data.nto.name)
+				label = self.labeler.fresh(data.src_var.name, data.tgt_var.name)
 
-			self._set_edge(data.nfrom.name, data.nto.name, label, cpd=data)
+			self._set_edge(data.src_var.name, data.tgt_var.name, label, cpd=data)
 		
 		elif isinstance(data, ConditionRequest):
 			self._include_var(data.given)
@@ -392,8 +374,8 @@ class PDG:
 				if isinstance(X, Variable): XN = X.name
 				if isinstance(Y,Variable):  YN = Y.name
 			if 'cpd' in data:
-				XN = data['cpd'].nfrom.name
-				YN = data['cpd'].nto.name
+				XN = data['cpd'].src_var.name
+				YN = data['cpd'].tgt_var.name
 			if 'label' in data:
 				label = data['label']
 			else:
@@ -497,14 +479,31 @@ class PDG:
 		return self.edges("XYPαβ")
 
 	def _fmted(self, XnameYnamel, fmt):
+		"""
+		Return data requested by `fmt` in the edge specified by `XnameYnamel`. 
+		Concretely, the specified edge is the unique one from `Xname` to `Yname` with label `l`, where (Xname, Yname, l) = XnameYnamel.
+		For details on `fmt`, see the documentation for the method `edges()`. 
+
+		Gives defaults of α = 1 and β = 1  when unspecified.
+		""" # TODO: revist the defaults. alpha = 0 is probably more appropriate, but it might break some things. Also it may be less interesting. 
+		
 		Xname, Yname, l = XnameYnamel
 		data = self.edgedata[XnameYnamel]
 		X,Y = self.vars[Xname], self.vars[Yname]
-		lookup = dict(src=X,tgt=Y,X=X,Y=Y,Xname=Xname,Yname=Yname, Xn=Xname, Yn =Yname,
-			alpha=1,beta=1,l=l,label=l, L=l)
+		
+		# The keys  of the following dict are not present in data, but we add them now.
+		# They are the cannonical names. 
+		lookup = dict(X=X,Y=Y,Xname=Xname,Yname=Yname,alpha=1,beta=1,label=l)
+		# TODO: maybe alpha=0?
 		lookup.update(**data)
-		if 'α' not in lookup: lookup['α'] = lookup['alpha']
-		if 'β' not in lookup: lookup['β'] = lookup['beta']
+		
+		lookup['S'] = lookup['X']
+		lookup['T'] = lookup['Y']
+		lookup['Sn'] = lookup['Xn'] = lookup['Xname']
+		lookup['Tn'] = lookup['Yn'] = lookup['Yname']
+		lookup['l'] = lookup['L'] = lookup['label']
+		lookup['α'] = lookup['alpha']
+		lookup['β'] = lookup['beta']
 		lookup['P'] = lookup['p'] =  data.get('cpd',None)
 
 		return tuple(lookup.get(s,None) for s in fmt) if len(fmt) > 1 \
@@ -522,37 +521,42 @@ class PDG:
 					idxs.append(i)
 		return idxs
 
-	def edges(self, fmt='XY'):
+	def edges(self, fmt='XY'): # TODO change default to names, which is better for printing.
 		"""
-		Examples:
-			M.edges("X,Y,cpd,α,β")
-			M.edges("XYLp")
-			M.edges(['X', 'Y'])
+		A generator that iterates over edges, yielding data for each hyper-arc, of the requested data. 
+		
+		 - "X", "S", -> produce source variable : `rv.Variable`
+		 - "Xname", "Xn", "Sn", "source" -> produce name of source variable : `str`
+ 		 - "Y", "T",  -> produce target variable : `rv.Variable`
+ 		 - "Yname", "Yn", "Tn", "target" -> produce name of source variable : `str`
+		 - "L", "l", "label" -> produce name of the arc itself : `str`
+		 - "cpd", "P" -> produce the probabilities : `dist.CPT`
+		 - "alpha", "α" -> produce the qualitative weight : `float`
+		 - "beta", "β" -> produce the quantitative weight : `float`
+	 
+
+		Examples usage:
+		```
+		M.edges("X,Y,cpd,α,β")
+		M.edges("XYLp")
+		M.edges(['X', 'Y'])
+		```
+		
+		Functionality is based on the `_fmted` helper method.
 		"""
-		if type(fmt) is str:
-			delims = ',; '
+		if type(fmt) is str: # could also be list, in which case we assume splitting has already been done. 
+			delims = ',; ' # possible delimeters, in order of priority
+			# if a delimeter is present, chunk by that delimeter
 			for d in delims:
 				if d in fmt:
 					fmt = fmt.split(d)
 					break
+			# if no delimeter was present, then just use the chars of the string.
+			# TODO: decide how to address problem where 'Xn' by itself produces  (X, none). 
+			# Probably we want to depricate the super condensed style. We 
 
-		# for (Xname, Yname, l), data in self.edgedata.items():
-		for xnynl in self.edgedata:
-			# X,Y = self.vars[Xname], self.vars[Yname]
-			# lookup = dict(src=X,tgt=Y,X=X,Y=Y,Xname=Xname,Yname=Yname, Xn=Xname, Yn =Yname,
-			#     alpha=1,beta=1,l=l,label=l, L=l)
-			# lookup.update(**data)
-			# if 'α' not in lookup: lookup['α'] = lookup['alpha']
-			# if 'β' not in lookup: lookup['β'] = lookup['beta']
-			# lookup['P'] = lookup['p'] =  data.get('cpd',None)
-			# 
-			# # alpha = data.get('alpha', 1)
-			# # beta = data.get('beta', 1)
-			# # yield X,Y, data.get('cpd', None), alpha, beta
-			# 
-			# yield tuple(lookup.get(s,None) for s in fmt) if len(fmt) > 1 \
-			#     else lookup.get(fmt[0],None)
-			yield self._fmted(xnynl, fmt)
+		for xn_yn_l in self.edgedata:
+			yield self._fmted(xn_yn_l, fmt)
 
 	def genΔ(self, kind=RJD.random, repr="atomic"):        
 		d = kind(self.getvarlist(repr))
